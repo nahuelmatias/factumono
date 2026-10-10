@@ -1,0 +1,46 @@
+# --- Secretos ARCA: NUNCA al repo ---
+*.key
+*.pem
+*.crt
+*.csr
+*.p12
+*.pfx
+certs/
+secrets/
+.facturitas/
+*.env
+.env*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- Build / empaquetado ---
+build/
+dist/
+*.spec.bak
+packaging/output/
+
+# --- Datos locales ---
+*.sqlite
+*.sqlite3
+*.db
+facturas_pdf/
+
+# --- IDE / SO ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Claude Code (config local personal) ---
+.claude/settings.local.json
