@@ -42,11 +42,11 @@ def texto_preview(c: Comprobante, etiqueta_ambiente: str, numero: int) -> str:
         )
     lineas += [
         "-" * 70,
-        " Cód  Descripción                       Cant. U.Medida      P.Unit.   Subtotal",
+        " Cód  Descripción                    Cant. U.Medida        P.Unit.   Subtotal",
     ]
     for i in c.items:
         lineas.append(
-            f" {i.codigo:<4} {i.descripcion[:32]:<32} {i.cantidad:>5} {i.unidad[:12]:<12}"
+            f" {i.codigo:<4} {i.descripcion[:30]:<30} {i.cantidad:>5} {i.unidad[:14]:<14}"
             f" {formatear_ar(i.precio_unitario):>11} {formatear_ar(i.subtotal):>10}"
         )
     lineas += [

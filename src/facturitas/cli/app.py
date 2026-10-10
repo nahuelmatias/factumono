@@ -301,8 +301,10 @@ def estado(
                 "✗ No hay puntos de venta habilitados para web services.", fg=typer.colors.YELLOW
             )
             typer.echo(
-                "  Hace falta uno de tipo 'RECE para aplicativo y web services'. Los de\n"
-                "  'Comprobantes en línea' no sirven. Ver el README (sección de puntos de venta)."
+                "  En producción hace falta uno de tipo 'RECE para aplicativo y web services'\n"
+                "  (los de 'Comprobantes en línea' no sirven). En homologación es habitual que\n"
+                "  la lista venga vacía: ARCA acepta consultar con cualquier número.\n"
+                "  Probá con `facturitas init --punto-venta 1`. Ver el README."
             )
             return
         typer.echo("Puntos de venta (web services):")
