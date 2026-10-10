@@ -35,6 +35,8 @@ packaging/output/
 *.sqlite3
 *.db
 facturas_pdf/
+DoNotPush/
+referencia_privada/
 
 # --- IDE / SO ---
 .vscode/
