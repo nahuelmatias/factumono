@@ -35,7 +35,7 @@ Un solo motor, cuatro caras:
 
 ## 4. Reglas de negocio ARCA (verificar contra la documentación oficial vigente antes de implementar)
 
-Documentación: manuales de WSAA y WSFEv1 en el sitio de ARCA (sección Web Services / Factura Electrónica). **Verificá endpoints y campos en la doc actual**; los de abajo son la referencia de partida.
+Documentación: manuales de WSAA y WSFEv1 en el sitio de ARCA (sección Web Services / Factura Electrónica). **Verificá endpoints y campos en la doc actual**; los de abajo son la referencia de partida. Última verificación: 10/10/2026 contra el manual WSFEv1 **v4.7** (revisión del 1/9/2026), la especificación del QR y los WSDL oficiales de homologación.
 
 **Endpoints**
 - WSAA homologación: `https://wsaahomo.afip.gov.ar/ws/services/LoginCms`
@@ -53,15 +53,16 @@ Documentación: manuales de WSAA y WSFEv1 en el sitio de ARCA (sección Web Serv
 - Tipos de comprobante: 1 = Factura A, 6 = Factura B, 11 = Factura C; 3/8/13 = Nota de Crédito A/B/C (incluir también las NC desde el inicio, es la única forma de "anular").
 - Concepto: 1 = Productos, 2 = Servicios, 3 = Productos y Servicios. Si es 2 o 3 son **obligatorios** `FchServDesde`, `FchServHasta` y `FchVtoPago`.
 - Documento del receptor: 80 = CUIT, 96 = DNI, 99 = Consumidor Final sin identificar (`DocNro` = 0). Validar el dígito verificador del CUIT localmente.
-- **`CondicionIVAReceptorId` es obligatorio** (ARCA rechaza desde el 01/12/2026 si falta, incluso en Factura C). Tomar los códigos de `FEParamGetCondicionIvaReceptor` (cacheados), no hardcodearlos. Valores típicos: Responsable Inscripto, Monotributo, Consumidor Final, Exento.
+- **`CondicionIVAReceptorId` se manda siempre** (RG 5616). En la tabla del manual v4.7 figura como no obligatorio, pero la doc dice que "resultará obligatorio"; si falta, ARCA responde 10245/10246, y un valor inválido (10242/10243) rechaza el CAE. La fecha de corte 01/12/2026 no figura en el manual: no depender de ella. Aplica también a Factura C. Tomar los códigos de `FEParamGetCondicionIvaReceptor` (cacheados), no hardcodearlos. Valores típicos: Responsable Inscripto, Monotributo, Consumidor Final, Exento.
 - **Factura C**: `ImpNeto` = total, `ImpIVA` = 0, sin array `Iva`. **Factura A/B**: desglose de IVA por alícuota (array `Iva` con `Id`, `BaseImp`, `Importe`). Calcular con `Decimal` y redondeo a 2 decimales; validar que los totales cierren.
 - Moneda `PES`, cotización 1 (dejar preparado para moneda extranjera, sin implementarlo aún).
 - Numeración: siempre `FECompUltimoAutorizado + 1`, pedido justo antes de emitir.
 - **WSFE no recibe ítems.** Los ítems (cantidad, unidad, descripción, precio unitario, alícuota) se guardan localmente y aparecen **solo en el PDF**. El total enviado a ARCA tiene que ser igual a la suma de los ítems.
+- **CAEA (contingencia)**: desde el 01/08/2026 el CAEA solo se permite como contingencia, y solo en domicilios con al menos un punto de venta CAE (o Controlador Fiscal) activo como modalidad principal. El plan de contingencia del POS (M7) tiene que respetar esto.
 - El punto de venta tiene que ser de tipo Web Services (se crea en "ABM de puntos de venta"). Tiene **numeración propia** que arranca en 1. Listarlos con `FEParamGetPtosVenta` y avisar claramente si no hay ninguno.
 
 **QR (RG 4892)**
-- URL `https://www.afip.gob.ar/fe/qr/?p=<base64(JSON)>` con `ver`, `fecha`, `cuit`, `ptoVta`, `tipoCmp`, `nroCmp`, `importe`, `moneda`, `ctz`, `tipoDocRec`, `nroDocRec`, `tipoCodAut` = "E", `codAut` = CAE. Verificar la especificación vigente.
+- URL `https://www.arca.gob.ar/fe/qr/?p=<base64(JSON)>` (la especificación vigente usa `arca.gob.ar`; el ejemplo del PDF todavía muestra `afip.gob.ar`). `fecha` en formato `YYYY-MM-DD`, `importe` con hasta 2 decimales, `ctz` hasta 6. Sin logo de ARCA: la especificación no lo menciona. Campos: con `ver`, `fecha`, `cuit`, `ptoVta`, `tipoCmp`, `nroCmp`, `importe`, `moneda`, `ctz`, `tipoDocRec`, `nroDocRec`, `tipoCodAut` = "E", `codAut` = CAE.
 
 **PDF**
 - Formato estándar de comprobante argentino: letra (A/B/C) en recuadro central, código de comprobante, datos del emisor (razón social, CUIT, condición IVA, domicilio, IIBB, inicio de actividades — todo configurable por perfil), datos del receptor, período facturado si corresponde, tabla de ítems (cantidad, unidad, descripción, precio unitario, subtotal), totales, CAE y vencimiento del CAE, QR.
@@ -71,6 +72,7 @@ Documentación: manuales de WSAA y WSFEv1 en el sitio de ARCA (sección Web Serv
 
 - **Nunca emitir sin confirmación.** El flujo es siempre *preparar* (borrador + preview, sin tocar ARCA salvo para consultar el próximo número) → *confirmar* (emisión real). Los borradores vencen (ej. 15 min).
 - **Idempotencia**: toda emisión lleva una `idempotency_key` (la API la exige; MCP y UI la generan internamente). Si se corta la red después de mandar `FECAESolicitar`, **antes de reintentar** hay que consultar con `FECompUltimoAutorizado` / `FECompConsultar` si el comprobante ya quedó autorizado, para no emitir dos veces.
+- **Preview antes de cada `FECAESolicitar`, también en homologación.** La CLI siempre muestra el preview y pide confirmación; los tests automatizados usan `--yes`.
 - **Ambiente explícito**: homologación por defecto. Producción solo después de que el perfil haya hecho al menos una emisión de prueba OK y con un toggle explícito. Mostrar siempre el ambiente en UI, CLI y en las respuestas del MCP ("⚠️ PRODUCCIÓN").
 - La API y la UI escuchan **solo en 127.0.0.1**. La API usa un token local (generado en la instalación) para que ninguna web del navegador pueda pegarle (cuidar CORS/CSRF).
 - Logs sin token, sign ni clave privada. Errores de ARCA traducidos a mensajes claros en español (mantener un mapa de códigos de error frecuentes → explicación + acción sugerida).
@@ -80,7 +82,7 @@ Documentación: manuales de WSAA y WSFEv1 en el sitio de ARCA (sección Web Serv
 
 **Modelo de datos (mínimo)**
 - `Credential`: certificado + clave (operador), CUIT del operador, ambiente.
-- `Profile`: CUIT representado, razón social, condición IVA del emisor, domicilio, punto de venta por defecto, datos para el PDF, credencial asociada.
+- `Profile`: CUIT representado, razón social, `nombre_fantasia` (opcional, se imprime en el PDF), condición IVA del emisor, domicilio, punto de venta por defecto, datos para el PDF, credencial asociada.
 - `Customer`: por perfil. Nombre, tipo/nro de documento, condición IVA del receptor, domicilio, email, defaults (concepto, ítem, unidad).
 - `Draft` y `Voucher`: cabecera, ítems, totales, CAE, vencimiento del CAE, número, PDF, `idempotency_key`, estado.
 
@@ -98,7 +100,7 @@ Documentación: manuales de WSAA y WSFEv1 en el sitio de ARCA (sección Web Serv
 - Caso Postaberry: `POST /vouchers` con `confirm=true` directo (el POS ya confirmó en caja), Consumidor Final, ítems `[{qty: 1, unit: "docena", desc: "Facturas", unit_price: ...}, {qty: 0.5, unit: "kg", desc: "Pan", unit_price: ...}]`.
 
 **CLI**
-- `facturitas init` (asistente: genera clave + CSR y explica paso a paso qué hacer en ARCA), `facturitas cert import`, `facturitas perfil ...`, `facturitas cliente ...`, `facturitas emitir ...` (con preview y confirmación interactiva, `--yes` para scripts), `facturitas lote archivo.xlsx`, `facturitas ultimo`, `facturitas estado`.
+- `facturitas init` (asistente: genera clave + CSR y explica paso a paso qué hacer en ARCA). **Nota:** en M4 `facturitas init` reemplaza a `tools/gen_csr.py`; hasta entonces el script sigue siendo el generador de CSR. En M1 `init` solo registra credencial y perfil, `facturitas cert import`, `facturitas perfil ...`, `facturitas cliente ...`, `facturitas emitir ...` (con preview y confirmación interactiva, `--yes` para scripts), `facturitas lote archivo.xlsx`, `facturitas ultimo`, `facturitas estado`.
 
 **Web UI** (prioridad: que la entienda Miguel)
 - Primer arranque: asistente en pasos con capturas/explicaciones de cada pantalla de ARCA: (1) generar clave y CSR con un botón, (2) subir el CSR en "Administración de Certificados Digitales" y pegar o subir el `.crt`, (3) asociar el servicio de facturación electrónica en "Administrador de Relaciones", (4) crear el punto de venta Web Services, (5) emisión de prueba en homologación. Validar cada paso contra ARCA cuando se pueda (ej. `FEParamGetPtosVenta`).

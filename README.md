@@ -26,6 +26,13 @@ uv run pytest
 - Para **producción** hay que crear un punto de venta nuevo desde "ABM de puntos de venta"
   en ARCA, de tipo web services. Se hace una sola vez, más adelante.
 
+## Nombre de fantasía
+
+El perfil tiene un campo opcional `nombre_fantasia` que se imprime en el PDF (útil para un
+comercio, por ejemplo una panadería). Para ser consistente con ARCA, el nombre de fantasía
+tiene que estar **declarado y asociado al punto de venta** en "Administración de Puntos de
+Venta y Domicilios".
+
 ## Seguridad
 
 - Nunca se apunta a producción en tests, scripts ni ejemplos.
