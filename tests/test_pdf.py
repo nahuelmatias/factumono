@@ -145,8 +145,8 @@ def test_receptor_con_dni_y_consumidor_final(comprobante: Comprobante) -> None:
 
 
 def test_nombre_de_archivo_igual_al_de_arca() -> None:
-    assert nombre_archivo("20358047867", 11, 1, 40) == "20358047867_011_00001_00000040.pdf"
-    assert nombre_archivo("20358047867", 13, 12, 7) == "20358047867_013_00012_00000007.pdf"
+    assert nombre_archivo("20000000001", 11, 1, 40) == "20000000001_011_00001_00000040.pdf"
+    assert nombre_archivo("20000000001", 13, 12, 7) == "20000000001_013_00012_00000007.pdf"
 
 
 def test_guardar_pdf_en_carpeta_configurable(tmp_path: Path, comprobante: Comprobante) -> None:

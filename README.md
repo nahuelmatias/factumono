@@ -53,7 +53,7 @@ avisa para Consumidor Final sin identificar, donde todos los tickets se parecen.
 
 Se genera solo al emitir, con el formato del comprobante de ARCA (ORIGINAL, DUPLICADO y
 TRIPLICADO, QR con la URL de `arca.gob.ar`). El nombre es el mismo que usa ARCA:
-`<CUIT>_<tipo>_<PV>_<NRO>.pdf`, por ejemplo `20358047867_011_00001_00000103.pdf`.
+`<CUIT>_<tipo>_<PV>_<NRO>.pdf`, por ejemplo `20000000001_011_00001_00000103.pdf`.
 
 Se guardan en `Documentos/Facturitas/<perfil>/`; cambiá la carpeta con `facturitas config
 --carpeta-pdf`. Los de **homologación van a la subcarpeta `homologacion/`** y llevan una marca
