@@ -10,6 +10,7 @@ from facturitas import __version__, config
 from facturitas.arca.wsaa import Ticket
 from facturitas.arca.wsfe import CondicionIva, PuntoVenta
 from facturitas.cli import app as cli
+from facturitas.contexto import Contexto
 from facturitas.core.models import Comprobante, Credencial, Perfil
 from facturitas.storage.historial import Historial
 from tests.test_service import ArcaFalso
@@ -67,7 +68,7 @@ def wsfe_falso(
             {"default": credencial}, {"default": perfil}, carpeta_pdf=str(tmp_path / "pdf")
         )
     )
-    ctx: Any = cli.Contexto(
+    ctx: Any = Contexto(
         perfil,
         credencial,
         WsaaFalso(),  # type: ignore[arg-type]
@@ -273,3 +274,51 @@ def test_config_carpeta_pdf(tmp_path: Path) -> None:
     r = runner.invoke(cli.app, ["config", "--carpeta-pdf", str(tmp_path / "x")])
     assert r.exit_code == 0 and str(tmp_path / "x") in r.output
     assert config.cargar().carpeta_pdf == str(tmp_path / "x")
+
+
+def test_cliente_agregar_listar_editar_borrar(wsfe_falso: WsfeFalso) -> None:
+    r = runner.invoke(
+        cli.app,
+        ["cliente", "agregar", "acciona", "--nombre", "ACCIONA IT S.R.L", "--cuit", "30710581467",
+         "--condicion-iva", "IVA Responsable Inscripto", "--descripcion", "Servicios de innovación",
+         "--vto-dias", "0"],
+    )  # fmt: skip
+    assert r.exit_code == 0, r.output
+    listado = runner.invoke(cli.app, ["cliente", "listar"]).output
+    assert "ACCIONA IT S.R.L" in listado and "30-71058146-7" in listado and "vto. 0 días" in listado
+    r = runner.invoke(cli.app, ["cliente", "editar", "acciona", "--email", "a@b.com"])
+    assert r.exit_code == 0 and "a@b.com" in runner.invoke(cli.app, ["cliente", "listar"]).output
+    repetido = ["cliente", "agregar", "acciona", "--nombre", "X", "--cuit", "30000000007"]
+    assert runner.invoke(cli.app, [*repetido, "--condicion-iva", "Consumidor Final"]).exit_code == 1
+    assert runner.invoke(cli.app, ["cliente", "borrar", "acciona"], input="n\n").exit_code == 0
+    assert "acciona" in runner.invoke(cli.app, ["cliente", "listar"]).output
+    assert runner.invoke(cli.app, ["cliente", "borrar", "acciona", "--yes"]).exit_code == 0
+    assert "No hay clientes" in runner.invoke(cli.app, ["cliente", "listar"]).output
+
+
+def test_emitir_con_cliente_y_repetir_ultima(wsfe_falso: WsfeFalso) -> None:
+    runner.invoke(
+        cli.app,
+        ["cliente", "agregar", "seba", "--nombre", "MARTIN SEBASTIAN PABLO",
+         "--cuit", "20354267277", "--condicion-iva", "Consumidor Final",
+         "--descripcion", "Servicios informáticos"],
+    )  # fmt: skip
+    r = runner.invoke(
+        cli.app,
+        ["emitir", "--cliente", "seba", "--precio", "1500", "--periodo", "09/2026", "--yes"],
+    )
+    assert r.exit_code == 0, r.output
+    assert "Servicios informáticos" in r.output and "01/09/2026 al 30/09/2026" in r.output
+    r = runner.invoke(cli.app, ["emitir", "--cliente", "seba", "--repetir-ultima", "--yes"])
+    assert r.exit_code == 0, r.output
+    assert "Período corrido a 01/10/2026 al 31/10/2026" in r.output
+    assert len(wsfe_falso.autorizados) == 2
+    assert "necesita --cliente" in runner.invoke(cli.app, ["emitir", "--repetir-ultima"]).output
+
+
+def test_mcp_instalar_solo_mostrar_no_modifica_nada(tmp_path: Path) -> None:
+    r = runner.invoke(cli.app, ["mcp", "instalar", "--solo-mostrar"])
+    assert r.exit_code == 0 and "claude mcp add facturitas" in r.output
+    ruta = tmp_path / "cfg.json"
+    r = runner.invoke(cli.app, ["mcp", "instalar", "--config", str(ruta)])
+    assert r.exit_code == 0 and "configurado" in r.output and ruta.is_file()

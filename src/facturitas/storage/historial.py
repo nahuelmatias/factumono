@@ -303,6 +303,37 @@ class Historial:
                 out.append(r)
         return out
 
+    def ultima_factura_a(
+        self, cuit: str, ambiente: str, doc_tipo: int, doc_nro: int
+    ) -> Registro | None:
+        """La última factura autorizada (y no anulada) a ese receptor."""
+        candidatas = self._varios(
+            "SELECT * FROM comprobantes WHERE cuit_emisor = ? AND ambiente = ?"
+            " AND cbte_tipo IN (1, 6, 11) AND receptor_doc_tipo = ? AND receptor_doc_nro = ?"
+            " AND estado = 'autorizado' ORDER BY id DESC",
+            (cuit, ambiente, doc_tipo, str(doc_nro)),
+        )
+        return next((r for r in candidatas if not self.notas_de_credito_de(r.id)), None)
+
+    def resumen(
+        self, cuit: str, ambiente: str, desde: date, hasta: date
+    ) -> tuple[int, Decimal, int, Decimal]:
+        """(cantidad de facturas, total facturado, cantidad de NC, total acreditado) en el rango,
+        por fecha de emisión y solo comprobantes autorizados."""
+        filas = self._varios(
+            "SELECT * FROM comprobantes WHERE cuit_emisor = ? AND ambiente = ?"
+            " AND estado = 'autorizado' AND fecha >= ? AND fecha <= ?",
+            (cuit, ambiente, desde.isoformat(), hasta.isoformat()),
+        )
+        facturas = [r for r in filas if r.cbte_tipo in (1, 6, 11)]
+        notas = [r for r in filas if r.cbte_tipo in (3, 8, 13)]
+        return (
+            len(facturas),
+            sum((r.importe for r in facturas), Decimal(0)),
+            len(notas),
+            sum((r.importe for r in notas), Decimal(0)),
+        )
+
     def listar(
         self,
         *,

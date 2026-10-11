@@ -3,11 +3,11 @@
 import sys
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 
 import httpx
 import typer
@@ -19,14 +19,14 @@ from typer import rich_utils
 from facturitas import __version__, config
 from facturitas.arca import ambientes
 from facturitas.arca.errors import ArcaError
-from facturitas.arca.wsaa import Wsaa
-from facturitas.arca.wsfe import Wsfe
+from facturitas.contexto import Contexto, construir
+from facturitas.core import armado, money, service
 from facturitas.core import cuit as cuit_mod
-from facturitas.core import money, service
 from facturitas.core.fechas import de_arca
 from facturitas.core.fechas import mostrar as fecha_ar
 from facturitas.core.models import (
     FACTURA_C,
+    Cliente,
     Comprobante,
     Concepto,
     Credencial,
@@ -88,35 +88,8 @@ def _ejecutar(fn: Callable[[], None]) -> None:
         _fallar(f"No se pudo comunicar con ARCA. Revisá tu conexión. ({e})")
 
 
-@dataclass
-class Contexto:
-    perfil: Perfil
-    credencial: Credencial
-    wsaa: Wsaa
-    wsfe: Wsfe
-    etiqueta: str
-    perfil_nombre: str = "default"
-    ambiente: str = "homo"
-    historial: Historial | None = None
-
-
 def _contexto(nombre_perfil: str | None) -> Contexto:
-    cfg = config.cargar()
-    perfil = cfg.perfil(nombre_perfil)
-    cred = cfg.credencial_de(perfil)
-    amb = ambientes.obtener(cred.ambiente)  # en M1 solo existe homologación
-    cache = config.directorio_cache()
-    wsaa = Wsaa(cred, amb, cache)
-    return Contexto(
-        perfil,
-        cred,
-        wsaa,
-        Wsfe(perfil.cuit, wsaa, amb, cache),
-        amb.etiqueta,
-        perfil_nombre=nombre_perfil or cfg.perfil_default,
-        ambiente=amb.nombre,
-        historial=Historial(),
-    )
+    return construir(nombre_perfil)
 
 
 def _confirmar(pregunta: str) -> bool:
@@ -478,18 +451,39 @@ def _confirmar_emision(
 
 @app.command()
 def emitir(
-    descripcion: Annotated[str, typer.Option("--descripcion", help="Producto / servicio.")],
+    descripcion: Annotated[
+        str | None, typer.Option("--descripcion", help="Producto / servicio.")
+    ] = None,
     precio: Annotated[
-        str, typer.Option("--precio", help="Precio unitario (ej.: 1500 o 1.500,50).")
-    ],
+        str | None, typer.Option("--precio", help="Precio unitario (ej.: 1500 o 1.500,50).")
+    ] = None,
     perfil: PerfilOpt = None,
+    cliente: Annotated[
+        str | None,
+        typer.Option("--cliente", help="Alias de un cliente guardado: usa sus datos y defaults."),
+    ] = None,
+    repetir_ultima: Annotated[
+        bool,
+        typer.Option(
+            "--repetir-ultima",
+            help="Repite la última factura a ese cliente con el período corrido al mes que sigue.",
+        ),
+    ] = False,
+    periodo: Annotated[
+        str | None,
+        typer.Option(
+            help="Período: 'septiembre', '09/2026' o 'DD/MM/AAAA al DD/MM/AAAA' (servicios)."
+        ),
+    ] = None,
     pto_vta: Annotated[int | None, typer.Option(help="Punto de venta.")] = None,
     cantidad: Annotated[str, typer.Option(help="Cantidad.")] = "1",
-    unidad: Annotated[str, typer.Option(help="Unidad de medida.")] = "otras unidades",
+    unidad: Annotated[
+        str | None, typer.Option(help="Unidad de medida (por defecto la del cliente).")
+    ] = None,
     codigo: Annotated[str, typer.Option(help="Código del ítem.")] = "1",
     concepto: Annotated[
-        str, typer.Option(help="'servicios' (con período) o 'productos'.")
-    ] = "servicios",
+        str | None, typer.Option(help="'servicios' (con período) o 'productos'.")
+    ] = None,
     receptor_cuit: Annotated[str | None, typer.Option(help="CUIT del receptor.")] = None,
     receptor_dni: Annotated[str | None, typer.Option(help="DNI del receptor.")] = None,
     receptor_nombre: Annotated[
@@ -507,7 +501,9 @@ def emitir(
         str | None, typer.Option(help="Fin del período. Por defecto, fin del mes.")
     ] = None,
     vto_pago: Annotated[str | None, typer.Option(help="Vencimiento de pago (DD/MM/AAAA).")] = None,
-    vto_dias: Annotated[int, typer.Option(help="Si no hay --vto-pago: días desde hoy.")] = 4,
+    vto_dias: Annotated[
+        int | None, typer.Option(help="Si no hay --vto-pago: días desde hoy (por defecto 4).")
+    ] = None,
     condicion_venta: Annotated[str, typer.Option(help="Condición de venta.")] = "Contado",
     clave: Annotated[
         str | None,
@@ -522,56 +518,111 @@ def emitir(
 
     def run() -> None:
         ctx = _contexto(perfil)
+        historial_ = _historial(ctx)
         hoy = date.today()
         pv = _pto_vta(ctx, pto_vta)
         if ctx.perfil.cbte_tipo_default != FACTURA_C:
             raise ValueError("Por ahora solo se emite Factura C.")
-        cond = ctx.wsfe.resolver_condicion_iva(condicion_iva, "C")
-        if receptor_cuit:
-            r_tipo, r_nro = DocTipo.CUIT, int(cuit_mod.normalizar(receptor_cuit))
-        elif receptor_dni:
-            r_tipo, r_nro = DocTipo.DNI, int(receptor_dni)
-        else:
-            r_tipo, r_nro = DocTipo.CONSUMIDOR_FINAL, 0
-        receptor = Receptor(
-            doc_tipo=int(r_tipo),
-            doc_nro=r_nro,
-            nombre=receptor_nombre,
-            condicion_iva_id=cond.id,
-            condicion_iva=cond.descripcion,
-            domicilio=receptor_domicilio,
-        )
-        es_servicio = concepto.lower().startswith("serv")
-        if not es_servicio and not concepto.lower().startswith("prod"):
-            raise ValueError("--concepto debe ser 'servicios' o 'productos'.")
-        c = Comprobante(
-            perfil=ctx.perfil,
-            punto_venta=pv,
-            cbte_tipo=FACTURA_C,
-            concepto=Concepto.SERVICIOS if es_servicio else Concepto.PRODUCTOS,
-            receptor=receptor,
-            items=(
-                Item(
-                    descripcion=descripcion,
+        if periodo and (desde or hasta):
+            raise ValueError("Usá --periodo o --desde/--hasta, no los dos.")
+        p_desde = _parsear_fecha(desde) if desde else None
+        p_hasta = _parsear_fecha(hasta) if hasta else None
+        if periodo:
+            p_desde, p_hasta = armado.parsear_periodo(periodo, hoy)
+        p_vto = _parsear_fecha(vto_pago) if vto_pago else None
+        precio_dec = money.parsear(precio) if precio else None
+        if repetir_ultima and not cliente:
+            raise ValueError("--repetir-ultima necesita --cliente.")
+
+        if cliente:
+            cli = ctx.clientes.obtener(ctx.perfil_nombre, cliente)
+            if repetir_ultima:
+                ultima = armado.ultima_factura(historial_, ctx.perfil.cuit, ctx.ambiente, cli)
+                c = armado.repetir_ultima(
+                    ultima,
+                    hoy=hoy,
+                    importe=precio_dec,
+                    desde=p_desde,
+                    hasta=p_hasta,
+                    vto_dias=vto_dias if vto_dias is not None else cli.vto_dias,
+                )
+                if p_vto:
+                    c = replace(c, vto_pago=p_vto)
+                typer.echo(
+                    f"Repitiendo {_resumen(ultima)}"
+                    + (
+                        f"\nPeríodo corrido a {fecha_ar(c.periodo_desde)} al "
+                        f"{fecha_ar(c.periodo_hasta)}."
+                        if c.periodo_desde
+                        else ""
+                    )
+                )
+            else:
+                if precio_dec is None:
+                    raise ValueError("Falta --precio (o usá --repetir-ultima).")
+                item = armado.item_de_cliente(cli, precio_dec, descripcion)
+                item = replace(
+                    item,
                     cantidad=Decimal(money.parsear(cantidad)),
-                    precio_unitario=money.parsear(precio),
-                    unidad=unidad,
+                    unidad=unidad or cli.unidad,
                     codigo=codigo,
+                )
+                c = armado.armar_comprobante(
+                    perfil=ctx.perfil,
+                    punto_venta=pv,
+                    cbte_tipo=FACTURA_C,
+                    receptor=armado.receptor_de_cliente(ctx.wsfe, cli),
+                    items=(item,),
+                    concepto=concepto or cli.concepto,
+                    hoy=hoy,
+                    desde=p_desde,
+                    hasta=p_hasta,
+                    vto_pago=p_vto,
+                    vto_dias=vto_dias if vto_dias is not None else cli.vto_dias,
+                    condicion_venta=condicion_venta,
+                )
+        else:
+            if not descripcion or precio_dec is None:
+                raise ValueError("Falta --descripcion y --precio (o usá --cliente).")
+            cond = ctx.wsfe.resolver_condicion_iva(condicion_iva, "C")
+            if receptor_cuit:
+                r_tipo, r_nro = DocTipo.CUIT, int(cuit_mod.normalizar(receptor_cuit))
+            elif receptor_dni:
+                r_tipo, r_nro = DocTipo.DNI, int(receptor_dni)
+            else:
+                r_tipo, r_nro = DocTipo.CONSUMIDOR_FINAL, 0
+            c = armado.armar_comprobante(
+                perfil=ctx.perfil,
+                punto_venta=pv,
+                cbte_tipo=FACTURA_C,
+                receptor=Receptor(
+                    doc_tipo=int(r_tipo),
+                    doc_nro=r_nro,
+                    nombre=receptor_nombre,
+                    condicion_iva_id=cond.id,
+                    condicion_iva=cond.descripcion,
+                    domicilio=receptor_domicilio,
                 ),
-            ),
-            fecha=hoy,
-            condicion_venta=condicion_venta,
-        )
-        if es_servicio:
-            c = replace(
-                c,
-                periodo_desde=_parsear_fecha(desde) if desde else hoy.replace(day=1),
-                periodo_hasta=_parsear_fecha(hasta) if hasta else _fin_de_mes(hoy),
-                vto_pago=_parsear_fecha(vto_pago) if vto_pago else hoy + timedelta(days=vto_dias),
+                items=(
+                    Item(
+                        descripcion=descripcion,
+                        cantidad=Decimal(money.parsear(cantidad)),
+                        precio_unitario=precio_dec,
+                        unidad=unidad or "otras unidades",
+                        codigo=codigo,
+                    ),
+                ),
+                concepto=concepto or "servicios",
+                hoy=hoy,
+                desde=p_desde,
+                hasta=p_hasta,
+                vto_pago=p_vto,
+                vto_dias=vto_dias if vto_dias is not None else 4,
+                condicion_venta=condicion_venta,
             )
         c.validar()
         numero = ctx.wsfe.proximo_numero(pv, FACTURA_C)
-        duplicados = _historial(ctx).posibles_duplicados(ctx.perfil.cuit, ctx.ambiente, c)
+        duplicados = historial_.posibles_duplicados(ctx.perfil.cuit, ctx.ambiente, c)
         _confirmar_emision(ctx, texto_preview(c, ctx.etiqueta, numero), yes, duplicados)
         _emitir_y_mostrar(ctx, c, clave or str(uuid.uuid4()))
 
@@ -819,6 +870,226 @@ def configurar(
         typer.echo("  (cada perfil tiene su subcarpeta; lo de homologación va en 'homologacion/')")
         typer.echo(f"Historial:      {Historial().ruta}")
         typer.echo(f"Configuración:  {config.ruta_config()}")
+
+    _ejecutar(run)
+
+
+# --- clientes -----------------------------------------------------------------------------
+
+cliente_app = typer.Typer(
+    help="Clientes guardados por perfil (con sus defaults para facturar rápido).",
+    no_args_is_help=True,
+)
+app.add_typer(cliente_app, name="cliente")
+
+
+def _documento(c: Cliente) -> str:
+    return cuit_mod.formatear(str(c.doc_nro).zfill(11)) if c.doc_tipo == 80 else f"DNI {c.doc_nro}"
+
+
+def _validar_condicion(ctx: Contexto, texto: str) -> None:
+    try:
+        ctx.wsfe.resolver_condicion_iva(texto, "C")
+    except httpx.HTTPError:
+        typer.secho(
+            "⚠ No pude validar la condición de IVA contra ARCA (sin conexión): se guarda igual.",
+            fg=typer.colors.YELLOW,
+        )
+
+
+@cliente_app.command("agregar")
+def cliente_agregar(
+    alias: Annotated[str, typer.Argument(help="Nombre corto (ej.: acciona).")],
+    nombre: Annotated[str, typer.Option(help="Nombre o razón social.")],
+    condicion_iva: Annotated[
+        str, typer.Option(help="Ej.: 'IVA Responsable Inscripto', 'Consumidor Final'.")
+    ],
+    cuit: Annotated[str | None, typer.Option(help="CUIT.")] = None,
+    dni: Annotated[str | None, typer.Option(help="DNI.")] = None,
+    domicilio: Annotated[str, typer.Option(help="Domicilio.")] = "",
+    email: Annotated[str, typer.Option(help="Email.")] = "",
+    descripcion: Annotated[str, typer.Option(help="Descripción habitual del ítem.")] = "",
+    unidad: Annotated[str, typer.Option(help="Unidad habitual.")] = "otras unidades",
+    concepto: Annotated[str, typer.Option(help="'servicios' o 'productos'.")] = "servicios",
+    vto_dias: Annotated[int, typer.Option(help="Días de vencimiento de pago.")] = 4,
+    perfil: PerfilOpt = None,
+) -> None:
+    """Guarda un cliente nuevo."""
+
+    def run() -> None:
+        ctx = _contexto(perfil)
+        if bool(cuit) == bool(dni):
+            raise ValueError("Indicá el CUIT o el DNI (uno solo).")
+        if not concepto.lower().startswith(("serv", "prod")):
+            raise ValueError("--concepto debe ser 'servicios' o 'productos'.")
+        _validar_condicion(ctx, condicion_iva)
+        c = Cliente(
+            alias=alias,
+            nombre=nombre,
+            doc_tipo=int(DocTipo.CUIT) if cuit else int(DocTipo.DNI),
+            doc_nro=int(cuit_mod.normalizar(cuit)) if cuit else int(dni or 0),
+            condicion_iva=condicion_iva,
+            domicilio=domicilio,
+            email=email,
+            descripcion=descripcion,
+            unidad=unidad,
+            concepto="servicios" if concepto.lower().startswith("serv") else "productos",
+            vto_dias=vto_dias,
+        )
+        ctx.clientes.guardar(ctx.perfil_nombre, c)
+        typer.secho(f"✓ Cliente '{alias.lower()}' guardado ({nombre}).", fg=typer.colors.GREEN)
+
+    _ejecutar(run)
+
+
+@cliente_app.command("listar")
+def cliente_listar(perfil: PerfilOpt = None) -> None:
+    """Lista los clientes guardados."""
+
+    def run() -> None:
+        ctx = _contexto(perfil)
+        clientes = ctx.clientes.listar(ctx.perfil_nombre)
+        if not clientes:
+            typer.echo("No hay clientes guardados. Agregá uno con `facturitas cliente agregar`.")
+            return
+        for c in clientes:
+            typer.echo(f"{c.alias:<12} {c.nombre}  —  {_documento(c)}  ({c.condicion_iva})")
+            habitual = f"{c.descripcion or '(sin descripción)'} · {c.unidad} · {c.concepto}"
+            typer.echo(f"{'':<12} habitual: {habitual} · vto. {c.vto_dias} días")
+            if c.domicilio or c.email:
+                typer.echo(f"{'':<12} {c.domicilio}{'  ✉ ' + c.email if c.email else ''}")
+
+    _ejecutar(run)
+
+
+@cliente_app.command("editar")
+def cliente_editar(
+    alias: Annotated[str, typer.Argument(help="Alias del cliente.")],
+    nombre: Annotated[str | None, typer.Option(help="Nombre o razón social.")] = None,
+    condicion_iva: Annotated[str | None, typer.Option(help="Condición frente al IVA.")] = None,
+    cuit: Annotated[str | None, typer.Option(help="CUIT.")] = None,
+    dni: Annotated[str | None, typer.Option(help="DNI.")] = None,
+    domicilio: Annotated[str | None, typer.Option(help="Domicilio.")] = None,
+    email: Annotated[str | None, typer.Option(help="Email.")] = None,
+    descripcion: Annotated[str | None, typer.Option(help="Descripción habitual.")] = None,
+    unidad: Annotated[str | None, typer.Option(help="Unidad habitual.")] = None,
+    concepto: Annotated[str | None, typer.Option(help="'servicios' o 'productos'.")] = None,
+    vto_dias: Annotated[int | None, typer.Option(help="Días de vencimiento de pago.")] = None,
+    perfil: PerfilOpt = None,
+) -> None:
+    """Cambia los datos de un cliente (solo lo que indiques)."""
+
+    def run() -> None:
+        ctx = _contexto(perfil)
+        actual = ctx.clientes.buscar(ctx.perfil_nombre, alias)
+        if actual is None:
+            raise ValueError(f"No hay un cliente '{alias}'.")
+        cambios: dict[str, Any] = {
+            k: v
+            for k, v in dict(
+                nombre=nombre,
+                condicion_iva=condicion_iva,
+                domicilio=domicilio,
+                email=email,
+                descripcion=descripcion,
+                unidad=unidad,
+                vto_dias=vto_dias,
+            ).items()
+            if v is not None
+        }
+        if cuit and dni:
+            raise ValueError("Indicá el CUIT o el DNI (uno solo).")
+        if cuit:
+            cambios.update(doc_tipo=int(DocTipo.CUIT), doc_nro=int(cuit_mod.normalizar(cuit)))
+        if dni:
+            cambios.update(doc_tipo=int(DocTipo.DNI), doc_nro=int(dni))
+        if concepto:
+            if not concepto.lower().startswith(("serv", "prod")):
+                raise ValueError("--concepto debe ser 'servicios' o 'productos'.")
+            cambios["concepto"] = (
+                "servicios" if concepto.lower().startswith("serv") else "productos"
+            )
+        if not cambios:
+            raise ValueError("No indicaste nada para cambiar.")
+        if condicion_iva:
+            _validar_condicion(ctx, condicion_iva)
+        ctx.clientes.guardar(ctx.perfil_nombre, replace(actual, **cambios), reemplazar=True)
+        typer.secho(f"✓ Cliente '{actual.alias}' actualizado.", fg=typer.colors.GREEN)
+
+    _ejecutar(run)
+
+
+@cliente_app.command("borrar")
+def cliente_borrar(
+    alias: Annotated[str, typer.Argument(help="Alias del cliente.")],
+    perfil: PerfilOpt = None,
+    yes: Annotated[bool, typer.Option("--yes", help="No pregunta.")] = False,
+) -> None:
+    """Borra un cliente guardado (no toca los comprobantes ya emitidos)."""
+
+    def run() -> None:
+        ctx = _contexto(perfil)
+        if not ctx.clientes.buscar(ctx.perfil_nombre, alias):
+            raise ValueError(f"No hay un cliente '{alias}'.")
+        if not yes and not _confirmar(f"¿Borrar el cliente '{alias}'?"):
+            typer.echo("Cancelado.")
+            return
+        ctx.clientes.borrar(ctx.perfil_nombre, alias)
+        typer.secho(f"✓ Cliente '{alias.lower()}' borrado.", fg=typer.colors.GREEN)
+
+    _ejecutar(run)
+
+
+# --- mcp ----------------------------------------------------------------------------------
+
+mcp_app = typer.Typer(
+    help="Servidor MCP (stdio) para conectar Facturitas con una IA.",
+    invoke_without_command=True,
+    no_args_is_help=False,
+)
+app.add_typer(mcp_app, name="mcp")
+
+
+@mcp_app.callback()
+def mcp_servidor(ctx: typer.Context) -> None:
+    """Sin subcomando, arranca el servidor MCP por stdio (lo lanza el cliente de IA)."""
+    if ctx.invoked_subcommand is None:
+        from facturitas.mcp.server import ejecutar
+
+        ejecutar()
+
+
+@mcp_app.command("instalar")
+def mcp_instalar(
+    config_path: Annotated[
+        Path | None,
+        typer.Option("--config", help="Ruta del claude_desktop_config.json (si no, se detecta)."),
+    ] = None,
+    solo_mostrar: Annotated[
+        bool, typer.Option("--solo-mostrar", help="No modifica nada: solo muestra los snippets.")
+    ] = False,
+) -> None:
+    """Agrega Facturitas a Claude Desktop (con backup) y muestra cómo conectar otros clientes."""
+    from facturitas.mcp import instalar as inst
+
+    def run() -> None:
+        entrada = inst.entrada_mcp()
+        if not solo_mostrar:
+            rutas = [config_path] if config_path else inst.rutas_claude_desktop()
+            existentes = [r for r in rutas if r.exists() or r.parent.exists()]
+            destinos = existentes or rutas[:1]
+            for ruta in destinos:
+                r = inst.instalar_en(ruta, entrada)
+                if r.ya_estaba:
+                    typer.echo(f"• Claude Desktop ya tenía Facturitas configurado: {r.ruta}")
+                else:
+                    typer.secho(f"✓ Claude Desktop configurado: {r.ruta}", fg=typer.colors.GREEN)
+                    if r.backup:
+                        typer.echo(f"  Backup del archivo anterior: {r.backup}")
+            typer.echo(
+                "  Reiniciá Claude Desktop (cerralo del todo desde la bandeja) para verlo.\n"
+            )
+        typer.echo(inst.snippets(entrada))
 
     _ejecutar(run)
 

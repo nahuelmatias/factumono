@@ -158,3 +158,20 @@ class Comprobante:
             )
         if self.periodo_desde and self.periodo_hasta and self.periodo_desde > self.periodo_hasta:
             raise ValueError("El período 'desde' no puede ser posterior al 'hasta'.")
+
+
+@dataclass(frozen=True)
+class Cliente:
+    """Cliente guardado de un perfil, con los defaults para facturarle rápido."""
+
+    alias: str
+    nombre: str
+    doc_tipo: int
+    doc_nro: int
+    condicion_iva: str
+    domicilio: str = ""
+    email: str = ""
+    descripcion: str = ""  # ítem habitual
+    unidad: str = "otras unidades"
+    concepto: str = "servicios"  # 'servicios' | 'productos'
+    vto_dias: int = 4  # días de vencimiento de pago desde la emisión
