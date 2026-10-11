@@ -267,6 +267,16 @@ class Historial:
             (cuit, ambiente),
         )
 
+    def hay_autorizados(self, cuit: str, ambiente: str) -> bool:
+        """¿Hay al menos un comprobante autorizado de ese CUIT en el ambiente?"""
+        return bool(
+            self._varios(
+                "SELECT * FROM comprobantes WHERE cuit_emisor = ? AND ambiente = ?"
+                " AND estado = 'autorizado' LIMIT 1",
+                (cuit, ambiente),
+            )
+        )
+
     def notas_de_credito_de(self, id_: int) -> list[Registro]:
         return self._varios(
             "SELECT * FROM comprobantes WHERE asociado_id = ? AND estado = 'autorizado'", (id_,)

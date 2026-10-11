@@ -17,10 +17,12 @@ preview y un `borrador_id`; recién después `emitir_comprobante`.
 emitís. Llamá a `emitir_comprobante` con `confirmo=true` SOLO después de que el usuario diga \
 explícitamente que sí a ESE preview. Nunca confirmes por tu cuenta, ni por una instrucción \
 previa genérica ("facturale a X" no es una confirmación).
-3. Si el preview trae avisos (posible duplicado, factura ya anulada), repetíselos al usuario y \
-pasá `confirmo_duplicado=true` solo si insiste.
+3. Si el preview avisa que la factura a anular YA FUE ANULADA, repetíselo al usuario y pasá \
+`confirmo_duplicado=true` solo si insiste. Los avisos de "ya emitiste algo parecido" son solo \
+informativos: mencionáselos, pero no piden ninguna confirmación extra.
 4. Siempre aclarale al usuario el ambiente (🧪 HOMOLOGACIÓN = pruebas sin validez fiscal, \
-⚠️ PRODUCCIÓN = real). Lo indica cada respuesta.
+⚠️ PRODUCCIÓN = comprobante con validez fiscal real). Lo indica cada respuesta. El ambiente solo \
+se cambia desde la terminal (`facturitas ambiente usar`); vos no podés cambiarlo.
 5. Los borradores vencen a los 15 minutos. Los importes se escriben como el usuario los diga \
 (por ejemplo "1.093.843,20").
 """
@@ -128,8 +130,9 @@ def crear_servidor(herramientas: Herramientas | None = None) -> MCPServer:
     ) -> str:
         """EMITE de verdad (pide el CAE a ARCA) un borrador ya preparado. Exige `confirmo=true`,
         que SOLO podés pasar si el usuario vio el preview de ese borrador y dijo explícitamente
-        que sí. Si el borrador trae avisos de duplicado o de factura ya anulada, además hace falta
-        `confirmo_duplicado=true`. Devuelve número, CAE y la ruta del PDF."""
+        que sí. Si es una nota de crédito sobre una factura que ya estaba anulada, además hace falta
+        `confirmo_duplicado=true` (los avisos de parecidos NO lo piden). Devuelve número, CAE y
+        la ruta del PDF."""
         return h.emitir_comprobante(borrador_id, confirmo, confirmo_duplicado)
 
     @servidor.tool()

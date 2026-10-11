@@ -14,11 +14,13 @@ import httpx
 from pydantic import BaseModel
 
 from facturitas import config
+from facturitas.arca import ambientes
 from facturitas.arca.errors import ArcaError, EstadoIncierto
 from facturitas.contexto import Contexto
 from facturitas.contexto import construir as construir_contexto
 from facturitas.core import armado, money, service
 from facturitas.core import cuit as cuit_mod
+from facturitas.core.diagnostico import diagnosticar, esta_dado_de_baja
 from facturitas.core.fechas import mostrar as fecha_ar
 from facturitas.core.models import (
     NOMBRES_COMPROBANTE,
@@ -91,7 +93,15 @@ class Herramientas:
         else:
             texto = str(e)
         cuerpo = f"❌ {texto}"
-        return self._responder(ctx, cuerpo) if ctx else cuerpo
+        return self._responder(ctx, cuerpo) if ctx else f"{self._banner_activo()}\n\n{cuerpo}"
+
+    @staticmethod
+    def _banner_activo() -> str:
+        """El aviso del ambiente activo, para las respuestas que no llegaron a tener contexto."""
+        try:
+            return ambientes.obtener(config.cargar().ambiente).banner
+        except (ValueError, OSError):
+            return ambientes.HOMO.banner
 
     def _buscar(
         self, ctx: Contexto, numero: int, punto_venta: int | None, tipo: int | None
@@ -120,19 +130,20 @@ class Herramientas:
         assert ctx.historial
         numero = ctx.wsfe.proximo_numero(c.punto_venta, c.cbte_tipo)
         avisos = list(avisos_extra or [])
-        duplicados = ctx.historial.posibles_duplicados(ctx.perfil.cuit, ctx.ambiente, c)
-        for d in duplicados:
-            avisos.append(
-                f"POSIBLE DUPLICADO: ya emitiste {_corto(d)} del {fecha_ar(d.fecha)} "
-                f"por $ {money.formatear_ar(d.importe)} a {d.receptor_nombre} con el mismo "
-                "período. Preguntale al usuario si de verdad quiere otra."
-            )
+        # Los parecidos son solo informativos: no piden confirmación extra (un comercio puede
+        # facturarle dos veces al mismo cliente el mismo día).
+        info = [
+            f"Ojo: ya emitiste {_corto(d)} del {fecha_ar(d.fecha)} por "
+            f"$ {money.formatear_ar(d.importe)} a {d.receptor_nombre} con el mismo "
+            "período. Es solo un aviso: mencionáselo al usuario."
+            for d in ctx.posibles_duplicados(c)
+        ]
         b = ctx.borradores.crear(
             perfil=ctx.perfil_nombre,
             ambiente=ctx.ambiente,
             c=c,
             avisos=avisos,
-            requiere_extra=bool(duplicados or avisos_extra),
+            requiere_extra=bool(avisos),
             ahora=self._ahora(),
         )
         texto = markdown_preview(
@@ -142,6 +153,7 @@ class Herramientas:
             borrador_id=b.id,
             vence=b.vence.strftime("%H:%M"),
             avisos=avisos,
+            info=info,
             nota=nota,
         )
         return texto + (
@@ -156,47 +168,61 @@ class Herramientas:
         ctx = None
         try:
             ctx = self._contexto(perfil)
-            d = ctx.wsfe.dummy()
-            ok = all(v == "OK" for v in d.values())
-            ticket = ctx.wsaa.ticket("wsfe")
-            pvs = ctx.wsfe.puntos_venta()
+            d = diagnosticar(ctx)
             lineas = [
                 f"- **Perfil:** {ctx.perfil.razon_social} — CUIT "
                 f"{cuit_mod.formatear(ctx.perfil.cuit)} ({ctx.perfil.condicion_iva})",
-                f"- **Servidores ARCA:** {'✅ OK' if ok else '❌ ' + str(d)}",
-                f"- **Autenticación:** ✅ OK (ticket vigente hasta "
-                f"{ticket.vencimiento:%d/%m/%Y %H:%M})",
-                f"- **Punto de venta del perfil:** {ctx.perfil.punto_venta or 'sin definir'}",
+                f"- **Servidores ARCA:** {'✅ OK' if d.dummy_ok else '❌ ' + str(d.dummy or '')}",
             ]
-            if pvs:
+            if d.ticket_vence:
                 lineas.append(
-                    "- **Puntos de venta web services:** " + ", ".join(f"{p.nro:05d}" for p in pvs)
+                    f"- **Autenticación:** ✅ OK (ticket vigente hasta "
+                    f"{d.ticket_vence:%d/%m/%Y %H:%M})"
                 )
-            elif ctx.es_produccion:
-                lineas.append("- ❌ No hay puntos de venta habilitados para web services.")
-            else:
+            lineas.append(
+                f"- **Punto de venta configurado:** {ctx.perfil.punto_venta or 'sin definir'}"
+            )
+            if d.pvs:
+                lineas.append("- **Puntos de venta (web services):**")
+                for pv in d.pvs:
+                    extra = (" · BLOQUEADO" if pv.bloqueado else "") + (
+                        f" · baja {pv.fecha_baja}" if esta_dado_de_baja(pv) else ""
+                    )
+                    marca = " ← **configurado**" if pv.nro == d.pv_configurado else ""
+                    tipo = pv.emision_tipo or "sin tipo"
+                    lineas.append(f"  - {pv.nro:05d} · {tipo}{extra}{marca}")
+            elif d.ticket_vence and not ctx.es_produccion:
                 lineas.append(
                     "- ℹ️ Sin puntos de venta listados (normal en homologación: no impide emitir)."
                 )
+            lineas += [f"- ⚠️ {a}" for a in d.avisos]
+            lineas += [f"- ❌ {p}" for p in d.problemas]
             return self._responder(ctx, "\n".join(lineas))
         except (*_ERRORES, httpx.HTTPError) as e:
             return self._fallo(e, ctx)
 
     def listar_perfiles(self) -> str:
         cfg = config.cargar()
+        banner = ambientes.obtener(cfg.ambiente).banner
         if not cfg.perfiles:
-            return "❌ No hay perfiles configurados. Corré `facturitas init`."
+            return f"{banner}\n\n❌ No hay perfiles configurados. Corré `facturitas init`."
         filas = [
+            banner,
+            "",
             "| Perfil | Razón social | CUIT | Condición IVA | Pto. vta. | Ambiente |",
             "|--|--|--|--|--|--|",
         ]
         for nombre, p in cfg.perfiles.items():
-            cred = cfg.credenciales.get(p.credencial)
-            amb = "PRODUCCIÓN" if cred and cred.ambiente == "prod" else "homologación"
+            amb = ambientes.obtener(cfg.ambiente).titulo.lower()
+            if cfg.ambiente == "prod":
+                pv = p.punto_venta_prod
+                amb += "" if p.credencial_prod else " (sin configurar)"
+            else:
+                pv = p.punto_venta
             filas.append(
                 f"| {nombre}{' (principal)' if nombre == cfg.perfil_default else ''} | "
                 f"{p.razon_social} | {cuit_mod.formatear(p.cuit)} | {p.condicion_iva} | "
-                f"{p.punto_venta or '—'} | {amb} |"
+                f"{pv or '—'} | {amb} |"
             )
         return "\n".join(filas)
 

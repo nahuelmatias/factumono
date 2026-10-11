@@ -1,7 +1,7 @@
 """Tools del MCP: flujo preparar -> confirmar, con un ARCA falso en memoria."""
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -9,7 +9,7 @@ import pytest
 from mcp import Client
 
 from facturitas import config
-from facturitas.arca.wsfe import CondicionIva
+from facturitas.arca.wsfe import CondicionIva, PuntoVenta
 from facturitas.contexto import Contexto
 from facturitas.core.models import Cliente, Credencial, Perfil
 from facturitas.mcp.herramientas import Herramientas, ItemEntrada, ReceptorEntrada
@@ -121,18 +121,61 @@ def test_no_se_puede_emitir_sin_borrador_o_vencido(entorno: Entorno) -> None:
     assert "venció" in r and entorno.arca.autorizados == {}
 
 
-def test_posible_duplicado_pide_confirmacion_extra(entorno: Entorno) -> None:
+def test_posible_duplicado_es_solo_informativo(entorno: Entorno) -> None:
     primero = _id(
         entorno.h.preparar_comprobante(cliente="acciona", importe=1000, periodo="septiembre")
     )
     entorno.h.emitir_comprobante(primero, True)
     segundo = entorno.h.preparar_comprobante(cliente="acciona", importe=1000, periodo="septiembre")
-    assert "POSIBLE DUPLICADO" in segundo and "confirmo_duplicado=true" in segundo
-    r = entorno.h.emitir_comprobante(_id(segundo), True)
-    assert "🛑" in r and "confirmación extra" in r
-    assert len(entorno.arca.autorizados) == 1
-    assert "✅" in entorno.h.emitir_comprobante(_id(segundo), True, True)
-    assert len(entorno.arca.autorizados) == 2
+    assert "ya emitiste" in segundo and "Es solo un aviso" in segundo
+    assert "confirmo_duplicado" not in segundo  # no pide confirmación extra
+    r = entorno.h.emitir_comprobante(_id(segundo), True)  # alcanza con confirmo=true
+    assert "✅" in r and len(entorno.arca.autorizados) == 2
+
+
+def test_el_aviso_de_duplicado_se_puede_apagar_por_perfil(entorno: Entorno) -> None:
+    ctx = entorno.h._contexto(None)
+    ctx.perfil = replace(ctx.perfil, aviso_duplicados=False)
+    primero = _id(
+        entorno.h.preparar_comprobante(cliente="acciona", importe=1000, periodo="09/2026")
+    )
+    entorno.h.emitir_comprobante(primero, True)
+    segundo = entorno.h.preparar_comprobante(cliente="acciona", importe=1000, periodo="09/2026")
+    assert "ya emitiste" not in segundo
+
+
+def test_en_produccion_toda_respuesta_empieza_con_el_aviso_de_produccion(
+    entorno: Entorno,
+) -> None:
+    ctx = entorno.h._contexto(None)
+    ctx.ambiente = "prod"
+    aviso = "⚠️ PRODUCCIÓN — comprobante con validez fiscal"
+    respuestas = [
+        entorno.h.estado_arca(),
+        entorno.h.listar_clientes(),
+        entorno.h.listar_comprobantes(),
+        entorno.h.resumen_facturacion(),
+        entorno.h.preparar_comprobante(cliente="acciona", importe=1000, periodo="septiembre"),
+        entorno.h.preparar_comprobante(cliente="marciano", importe=1),  # error
+        entorno.h.emitir_comprobante("B-INEXISTENTE", True),  # error sin contexto
+    ]
+    for r in respuestas[:-1]:
+        assert r.startswith(aviso), r[:80]
+    assert "No existe el borrador" in respuestas[-1]
+
+
+def test_estado_arca_en_prod_marca_el_punto_de_venta_configurado(entorno: Entorno) -> None:
+    ctx = entorno.h._contexto(None)
+    ctx.ambiente = "prod"
+    entorno.arca.puntos = [
+        PuntoVenta(2, "Factura Electrónica - Monotributo - Web Services", False, "NULL"),
+        PuntoVenta(5, "Comprobantes en línea", False, "NULL"),
+    ]
+    r = entorno.h.estado_arca()
+    assert "00002 · Factura Electrónica - Monotributo - Web Services" in r
+    assert "← **configurado**" in r and r.count("configurado**") == 1
+    entorno.arca.puntos = [PuntoVenta(5, "Comprobantes en línea", False, "NULL")]
+    assert "❌" in entorno.h.estado_arca()
 
 
 def test_la_de_siempre_repite_la_ultima_con_periodo_corrido(entorno: Entorno) -> None:

@@ -8,7 +8,7 @@ from facturitas.core.models import NOMBRES_COMPROBANTE, Comprobante, Concepto
 from facturitas.core.money import formatear_ar
 
 
-def texto_preview(c: Comprobante, etiqueta_ambiente: str, numero: int) -> str:
+def texto_preview(c: Comprobante, etiqueta_ambiente: str, numero: int, banner: str = "") -> str:
     p, r = c.perfil, c.receptor
     nombre_cbte = NOMBRES_COMPROBANTE.get(c.cbte_tipo, f"Comprobante {c.cbte_tipo}")
     doc = (
@@ -16,7 +16,8 @@ def texto_preview(c: Comprobante, etiqueta_ambiente: str, numero: int) -> str:
         if r.doc_tipo == 80
         else (f"DNI {r.doc_nro}" if r.doc_tipo == 96 else "sin identificar")
     )
-    lineas = [
+    lineas = [banner] if banner else []
+    lineas += [
         "=" * 70,
         f" PREVIEW — {etiqueta_ambiente}",
         "=" * 70,
@@ -69,6 +70,7 @@ def markdown_preview(
     borrador_id: str | None = None,
     vence: str | None = None,
     avisos: list[str] | None = None,
+    info: list[str] | None = None,
     nota: str | None = None,
 ) -> str:
     """Preview pensado para verse bien en un chat (Markdown, sin cajas de texto)."""
@@ -116,6 +118,8 @@ def markdown_preview(
     lineas += ["", f"**TOTAL: $ {formatear_ar(c.total)}** (Factura C: sin discriminar IVA)"]
     if nota:
         lineas += ["", f"ℹ️ {nota}"]
+    for i_ in info or []:
+        lineas += ["", f"ℹ️ {i_}"]
     for a_ in avisos or []:
         lineas += ["", f"⚠️ {a_}"]
     if borrador_id:

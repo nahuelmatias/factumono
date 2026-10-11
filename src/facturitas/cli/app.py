@@ -22,6 +22,7 @@ from facturitas.arca.errors import ArcaError
 from facturitas.contexto import Contexto, construir
 from facturitas.core import armado, money, service
 from facturitas.core import cuit as cuit_mod
+from facturitas.core.diagnostico import Diagnostico, diagnosticar, esta_dado_de_baja
 from facturitas.core.fechas import de_arca
 from facturitas.core.fechas import mostrar as fecha_ar
 from facturitas.core.models import (
@@ -88,8 +89,17 @@ def _ejecutar(fn: Callable[[], None]) -> None:
         _fallar(f"No se pudo comunicar con ARCA. Revisá tu conexión. ({e})")
 
 
-def _contexto(nombre_perfil: str | None) -> Contexto:
-    return construir(nombre_perfil)
+def _banner_prod(ambiente: str) -> None:
+    """En producción, toda salida de la CLI arranca con este aviso (en homo no hace falta)."""
+    amb = ambientes.obtener(ambiente)
+    if amb.es_produccion:
+        typer.secho(amb.banner, fg=typer.colors.RED, bold=True)
+
+
+def _contexto(nombre_perfil: str | None, ambiente: str | None = None) -> Contexto:
+    ctx = construir(nombre_perfil, ambiente)
+    _banner_prod(ctx.ambiente)
+    return ctx
 
 
 def _confirmar(pregunta: str) -> bool:
@@ -164,12 +174,31 @@ def init(
         str | None, typer.Option(help="Nombre de fantasía que se imprime en el PDF.")
     ] = None,
     nombre: Annotated[str, typer.Option(help="Nombre con el que se guarda el perfil.")] = "default",
+    ambiente: Annotated[
+        str,
+        typer.Option(
+            help="'homo' (por defecto) o 'prod': registra el certificado y el punto de venta "
+            "de producción. No activa producción: eso es `facturitas ambiente usar prod`."
+        ),
+    ] = "homo",
+    aviso_duplicados: Annotated[
+        bool | None,
+        typer.Option(
+            "--aviso-duplicados/--sin-aviso-duplicados",
+            help="Avisar (solo informativo) si un comprobante se parece a uno ya emitido.",
+        ),
+    ] = None,
 ) -> None:
-    """Registra la credencial y el perfil (en homologación). Volvé a correrlo para modificar."""
+    """Registra la credencial y el perfil. Volvé a correrlo para modificar."""
 
     def run() -> None:
         cfg = config.cargar()
         previo = cfg.perfiles.get(nombre)
+        if ambientes.obtener(ambiente).es_produccion:
+            _init_produccion(
+                cfg, nombre, previo, cuit_operador, cert, key, punto_venta, aviso_duplicados
+            )
+            return
         cred_prev = cfg.credenciales.get(previo.credencial) if previo else None
 
         def pedir(valor: str | None, etiqueta: str, anterior: str | None) -> str:
@@ -231,6 +260,11 @@ def init(
             nombre_fantasia=nombre_fantasia
             if nombre_fantasia is not None
             else (previo.nombre_fantasia if previo else ""),
+            credencial_prod=previo.credencial_prod if previo else "",
+            punto_venta_prod=previo.punto_venta_prod if previo else None,
+            aviso_duplicados=aviso_duplicados
+            if aviso_duplicados is not None
+            else (previo.aviso_duplicados if previo else True),
         )
         perfil.cbte_tipo_default  # noqa: B018 - valida que el tipo de emisor esté soportado
         cfg.credenciales[nombre] = Credencial(
@@ -247,75 +281,161 @@ def init(
     _ejecutar(run)
 
 
+def _init_produccion(
+    cfg: config.Config,
+    nombre: str,
+    previo: Perfil | None,
+    cuit_operador: str | None,
+    cert: Path | None,
+    key: Path | None,
+    punto_venta: int | None,
+    aviso_duplicados: bool | None,
+) -> None:
+    """Registra el certificado real y el punto de venta de producción (sin activar producción)."""
+    if previo is None:
+        raise ValueError(
+            "Primero configurá el perfil con `facturitas init` (homologación); después "
+            "agregás producción con `--ambiente prod`."
+        )
+    cred_prev = cfg.credenciales.get(previo.credencial_prod)
+    cred_homo = cfg.credenciales.get(previo.credencial)
+    carpeta = Path.home() / ".facturitas" / "prod"
+
+    def ruta(valor: Path | None, anterior: str | None, etiqueta: str, por_defecto: Path) -> Path:
+        if valor:
+            return valor.expanduser().resolve()
+        if anterior:
+            return Path(anterior)
+        if por_defecto.is_file():
+            return por_defecto
+        return Path(str(typer.prompt(etiqueta))).expanduser().resolve()
+
+    ruta_cert = ruta(
+        cert,
+        cred_prev.cert if cred_prev else None,
+        "Ruta al certificado de PRODUCCIÓN (.crt)",
+        carpeta / "facturitas-prod.crt",
+    )
+    ruta_key = ruta(
+        key,
+        cred_prev.key if cred_prev else None,
+        "Ruta a la clave privada de PRODUCCIÓN (.key)",
+        carpeta / "facturitas-prod.key",
+    )
+    _validar_certificado(ruta_cert, ruta_key)
+    cuit_op = cuit_mod.normalizar(
+        cuit_operador
+        or (cred_prev.cuit if cred_prev else (cred_homo.cuit if cred_homo else previo.cuit))
+    )
+    pv = punto_venta or previo.punto_venta_prod
+    if not pv:
+        pv = int(typer.prompt("Punto de venta de PRODUCCIÓN (web services)"))
+    nombre_cred = f"{nombre}-prod"
+    cfg.credenciales[nombre_cred] = Credencial(
+        cuit=cuit_op, cert=str(ruta_cert), key=str(ruta_key), ambiente="prod"
+    )
+    cfg.perfiles[nombre] = replace(
+        previo,
+        credencial_prod=nombre_cred,
+        punto_venta_prod=pv,
+        aviso_duplicados=previo.aviso_duplicados if aviso_duplicados is None else aviso_duplicados,
+    )
+    config.guardar(cfg)
+    typer.secho(
+        f"✓ Producción registrada para el perfil '{nombre}' (punto de venta {pv}).",
+        fg=typer.colors.GREEN,
+    )
+    typer.echo(
+        "  Producción NO está activa: el ambiente sigue siendo "
+        f"{ambientes.obtener(cfg.ambiente).titulo}.\n"
+        "  Siguiente paso: `facturitas estado --ambiente prod` y, si da todo OK, "
+        "`facturitas ambiente usar prod`."
+    )
+
+
 # --- estado / ultimo / condiciones-iva ---------------------------------------------------------
+
+
+AmbienteOpt = Annotated[
+    str | None,
+    typer.Option("--ambiente", help="'homo' o 'prod' (por defecto, el ambiente activo)."),
+]
+
+
+def _mostrar_puntos_de_venta(d: Diagnostico) -> None:
+    typer.echo("Puntos de venta (web services):")
+    for pv in d.pvs:
+        marca = "   ← configurado" if pv.nro == d.pv_configurado else ""
+        baja = f", baja {pv.fecha_baja}" if esta_dado_de_baja(pv) else ""
+        bloq = ", BLOQUEADO" if pv.bloqueado else ""
+        typer.echo(
+            f"  - {pv.nro:05d}  {pv.emision_tipo or '(sin tipo informado)'}{bloq}{baja}{marca}"
+        )
 
 
 @app.command()
 def estado(
     perfil: PerfilOpt = None,
     offline: Annotated[bool, typer.Option("--offline", help="No consulta ARCA.")] = False,
+    ambiente: AmbienteOpt = None,
 ) -> None:
     """Chequea la conexión con ARCA (FEDummy), el acceso y los puntos de venta."""
 
     def run() -> None:
         cfg = config.cargar()
-        p = cfg.perfil(perfil)
-        cred = cfg.credencial_de(p)
-        amb = ambientes.obtener(cred.ambiente)
+        amb = ambientes.obtener(ambiente or cfg.ambiente)
+        p, _ = cfg.perfil_para(perfil, amb.nombre)
+        ctx = None if offline else _contexto(perfil, amb.nombre)  # imprime el aviso de prod
+        if offline:
+            _banner_prod(amb.nombre)
         typer.echo(f"Ambiente: {amb.etiqueta}")
+        if amb.nombre != cfg.ambiente:
+            typer.echo(
+                f"(el ambiente activo es {ambientes.obtener(cfg.ambiente).titulo}; "
+                "esto es solo un chequeo)"
+            )
         typer.echo(
             f"Perfil:   {p.razon_social} — CUIT {cuit_mod.formatear(p.cuit)} ({p.condicion_iva})"
         )
         typer.echo(
-            f"Punto de venta por defecto: {p.punto_venta if p.punto_venta else 'sin definir'}"
+            f"Punto de venta configurado: {p.punto_venta if p.punto_venta else 'sin definir'}"
         )
         if offline:
             typer.echo("(modo offline: no se consultó ARCA)")
             return
-        ctx = _contexto(perfil)
-        d = ctx.wsfe.dummy()
-        ok = all(v == "OK" for v in d.values())
-        typer.secho(
-            f"{'✓' if ok else '✗'} FEDummy: AppServer={d['AppServer']} DbServer={d['DbServer']} "
-            f"AuthServer={d['AuthServer']}",
-            fg=typer.colors.GREEN if ok else typer.colors.RED,
-        )
-        ticket = ctx.wsaa.ticket("wsfe")
-        typer.secho(
-            f"✓ Autenticación OK (ticket vigente hasta {ticket.vencimiento:%d/%m/%Y %H:%M})",
-            fg=typer.colors.GREEN,
-        )
-        pvs = ctx.wsfe.puntos_venta()
-        if not pvs:
-            if amb.es_produccion:
+        assert ctx is not None
+        d = diagnosticar(ctx)
+        if d.dummy:
+            typer.secho(
+                f"{'✓' if d.dummy_ok else '✗'} FEDummy: AppServer={d.dummy['AppServer']} "
+                f"DbServer={d.dummy['DbServer']} AuthServer={d.dummy['AuthServer']}",
+                fg=typer.colors.GREEN if d.dummy_ok else typer.colors.RED,
+            )
+        if d.ticket_vence:
+            typer.secho(
+                f"✓ Autenticación OK (ticket vigente hasta {d.ticket_vence:%d/%m/%Y %H:%M})",
+                fg=typer.colors.GREEN,
+            )
+        if d.pvs:
+            _mostrar_puntos_de_venta(d)
+        elif d.ticket_vence and not amb.es_produccion:
+            typer.secho(
+                "ℹ Sin puntos de venta listados: en homologación es lo habitual y no impide "
+                "emitir (ARCA acepta cualquier número).",
+                fg=typer.colors.CYAN,
+            )
+        for aviso in d.avisos:
+            typer.secho(f"⚠ {aviso}", fg=typer.colors.YELLOW)
+        for problema in d.problemas:
+            typer.secho(f"✗ {problema}", fg=typer.colors.RED)
+        if amb.es_produccion:
+            if d.ok:
                 typer.secho(
-                    "✗ No hay puntos de venta habilitados para web services.", fg=typer.colors.RED
-                )
-                typer.echo(
-                    "  Hace falta uno de tipo 'RECE para aplicativo y web services' (los de\n"
-                    "  'Comprobantes en línea' no sirven). Crealo en ARCA > ABM de puntos de venta."
+                    "✓ Producción lista: FEDummy, autenticación y punto de venta en orden.",
+                    fg=typer.colors.GREEN,
                 )
             else:
-                typer.secho(
-                    "ℹ Sin puntos de venta listados: en homologación es lo habitual y no impide "
-                    "emitir (ARCA acepta cualquier número).",
-                    fg=typer.colors.CYAN,
-                )
-            if not p.punto_venta:
-                typer.echo("  Falta definir el punto de venta: `facturitas init --punto-venta N`.")
-            return
-        typer.echo("Puntos de venta (web services):")
-        for pv in pvs:
-            marca = " (por defecto)" if pv.nro == p.punto_venta else ""
-            baja = f", baja {pv.fecha_baja}" if pv.fecha_baja and pv.fecha_baja != "NULL" else ""
-            bloq = ", BLOQUEADO" if pv.bloqueado else ""
-            typer.echo(f"  - {pv.nro:05d}  {pv.emision_tipo}{bloq}{baja}{marca}")
-        if p.punto_venta and p.punto_venta not in {pv.nro for pv in pvs}:
-            typer.secho(
-                f"⚠ El punto de venta por defecto ({p.punto_venta}) no figura entre los "
-                "de web services.",
-                fg=typer.colors.YELLOW,
-            )
+                raise typer.Exit(1)
 
     _ejecutar(run)
 
@@ -324,8 +444,9 @@ def _pto_vta(ctx: Contexto, pto_vta: int | None) -> int:
     pv = pto_vta or ctx.perfil.punto_venta
     if not pv:
         raise ValueError(
-            "Falta el punto de venta: pasalo con --pto-vta o definilo con `facturitas init "
-            "--punto-venta N` (podés ver los disponibles con `facturitas estado`)."
+            "Falta el punto de venta: pasalo con --pto-vta o definilo con `facturitas init"
+            f"{' --ambiente prod' if ctx.es_produccion else ''} --punto-venta N` "
+            "(podés ver los disponibles con `facturitas estado`)."
         )
     return pv
 
@@ -429,22 +550,19 @@ def _confirmar_emision(
     duplicados: list[Registro],
     que: str = "este comprobante",
 ) -> None:
-    """Muestra el preview y pide confirmación (con un aviso extra si parece un duplicado)."""
+    """Muestra el preview y pide confirmación. Los parecidos son solo informativos."""
     typer.echo(preview)
     if duplicados:
         typer.secho(
-            "⚠ Ojo: ya emitiste algo parecido (mismo receptor, importe y período):",
-            fg=typer.colors.YELLOW,
+            "ℹ Ojo: ya emitiste algo parecido (mismo receptor, importe y período). "
+            "Es solo un aviso:",
+            fg=typer.colors.CYAN,
         )
         for d in duplicados:
-            typer.secho(f"    - {_resumen(d)}", fg=typer.colors.YELLOW)
+            typer.secho(f"    - {_resumen(d)}", fg=typer.colors.CYAN)
     if yes:
         return
-    ambiente = ctx.etiqueta.split(" (")[0]
-    if not _confirmar(f"¿Emitir {que} en {ambiente}?"):
-        typer.echo("Cancelado: no se emitió nada.")
-        raise typer.Exit(0)
-    if duplicados and not _confirmar("Parece un duplicado. ¿Emitirlo de todos modos?"):
+    if not _confirmar(f"¿Emitir {que} en {ctx.nombre_ambiente}?"):
         typer.echo("Cancelado: no se emitió nada.")
         raise typer.Exit(0)
 
@@ -622,8 +740,9 @@ def emitir(
             )
         c.validar()
         numero = ctx.wsfe.proximo_numero(pv, FACTURA_C)
-        duplicados = historial_.posibles_duplicados(ctx.perfil.cuit, ctx.ambiente, c)
-        _confirmar_emision(ctx, texto_preview(c, ctx.etiqueta, numero), yes, duplicados)
+        duplicados = ctx.posibles_duplicados(c)
+        preview = texto_preview(c, ctx.etiqueta, numero, ctx.aviso_ambiente)
+        _confirmar_emision(ctx, preview, yes, duplicados)
         _emitir_y_mostrar(ctx, c, clave or str(uuid.uuid4()))
 
     _ejecutar(run)
@@ -663,14 +782,14 @@ def nota_credito(
         previas = historial.notas_de_credito_de(original.id)
         nc = service.nota_de_credito(historial, original, motivo)
         proximo = ctx.wsfe.proximo_numero(nc.punto_venta, nc.cbte_tipo)
-        typer.echo(texto_preview(nc, ctx.etiqueta, proximo))
+        typer.echo(texto_preview(nc, ctx.etiqueta, proximo, ctx.aviso_ambiente))
         if previas:
             typer.secho(
                 f"⚠ Esta factura ya tiene una nota de crédito: {_resumen(previas[0])}.",
                 fg=typer.colors.YELLOW,
             )
         if not yes:
-            if not _confirmar(f"¿Emitir la nota de crédito en {ctx.etiqueta.split(' (')[0]}?"):
+            if not _confirmar(f"¿Emitir la nota de crédito en {ctx.nombre_ambiente}?"):
                 typer.echo("Cancelado: no se emitió nada.")
                 raise typer.Exit(0)
             if previas and not _confirmar("Ya fue anulada. ¿Emitir otra nota de crédito igual?"):
@@ -691,11 +810,16 @@ def historial(
         str | None, typer.Option("--buscar", help="Receptor, CUIT/DNI, número o CAE.")
     ] = None,
     limite: Annotated[int, typer.Option(help="Cuántos mostrar (los más recientes).")] = 20,
+    ambiente: AmbienteOpt = None,
 ) -> None:
-    """Lista lo emitido (incluida la homologación, marcada como tal)."""
+    """Lista lo emitido en el ambiente activo (cada ambiente tiene su propio historial)."""
 
     def run() -> None:
-        filas = Historial().listar(perfil=perfil, texto=buscar, limite=limite)
+        amb = ambientes.obtener(ambiente or config.cargar().ambiente)
+        _banner_prod(amb.nombre)
+        filas = Historial(config.ruta_historial(amb.nombre)).listar(
+            perfil=perfil, texto=buscar, limite=limite
+        )
         if not filas:
             typer.echo("Todavía no hay comprobantes en el historial.")
             return
@@ -704,9 +828,9 @@ def historial(
             f"{'Receptor':<24}  {'Importe':>16}  {'Estado':<10}  CAE"
         )
         for r in filas:
-            amb = "HOMO" if r.es_homologacion else "PROD"
+            marca_amb = "HOMO" if r.es_homologacion else "PROD"
             typer.echo(
-                f"{r.id:>4}  {fecha_ar(r.fecha):<10}  {amb:<4}  "
+                f"{r.id:>4}  {fecha_ar(r.fecha):<10}  {marca_amb:<4}  "
                 f"{_nombre_corto(r.cbte_tipo, r.punto_venta, r.numero):<19}  "
                 f"{r.receptor_nombre[:24]:<24}  {money.formatear_ar(r.importe):>16}  "
                 f"{r.estado:<10}  {r.cae}"
@@ -857,21 +981,106 @@ def configurar(
     carpeta_pdf: Annotated[
         str | None, typer.Option("--carpeta-pdf", help="Dónde se guardan los PDF.")
     ] = None,
+    ambiente: Annotated[
+        str | None,
+        typer.Option("--ambiente", help="Cambia el ambiente activo (igual que `ambiente usar`)."),
+    ] = None,
 ) -> None:
     """Muestra o cambia la configuración general."""
 
     def run() -> None:
         cfg = config.cargar()
+        if ambiente is not None:
+            _activar_ambiente(ambiente, None, yes=False)
+            cfg = config.cargar()
         if carpeta_pdf is not None:
             cfg.carpeta_pdf = str(Path(carpeta_pdf).expanduser())
             config.guardar(cfg)
             typer.secho("✓ Carpeta de PDF actualizada.", fg=typer.colors.GREEN)
+        _banner_prod(cfg.ambiente)
+        typer.echo(f"Ambiente activo: {ambientes.obtener(cfg.ambiente).etiqueta}")
         typer.echo(f"Carpeta de PDF: {cfg.carpeta_base_pdf()}")
-        typer.echo("  (cada perfil tiene su subcarpeta; lo de homologación va en 'homologacion/')")
-        typer.echo(f"Historial:      {Historial().ruta}")
+        typer.echo(
+            "  (cada perfil tiene su subcarpeta; lo de homologación va en 'homologacion/' y "
+            "lleva marca de agua)"
+        )
+        for amb in ("homo", "prod"):
+            typer.echo(f"Historial {amb}:".ljust(16) + str(config.ruta_historial(amb)))
         typer.echo(f"Configuración:  {config.ruta_config()}")
 
     _ejecutar(run)
+
+
+# --- ambiente -----------------------------------------------------------------------------
+
+ambiente_app = typer.Typer(
+    help="Ambiente activo: homologación (pruebas) o producción (validez fiscal).",
+    invoke_without_command=True,
+    no_args_is_help=False,
+)
+app.add_typer(ambiente_app, name="ambiente")
+
+
+def _activar_ambiente(nombre: str, perfil: str | None, *, yes: bool) -> None:
+    """Cambia el ambiente activo. Producción solo si `estado` en prod da todo OK."""
+    destino = ambientes.obtener(nombre)
+    cfg = config.cargar()
+    if destino.nombre == cfg.ambiente:
+        typer.echo(f"El ambiente activo ya es {destino.titulo}.")
+        return
+    if destino.es_produccion:
+        ctx = construir(perfil, "prod")  # sin banner: todavía no es el ambiente activo
+        typer.echo("Chequeando producción antes de activarla...")
+        d = diagnosticar(ctx)
+        if d.dummy:
+            typer.echo(f"  FEDummy: {'OK' if d.dummy_ok else d.dummy}")
+        if d.ticket_vence:
+            typer.echo("  Autenticación: OK")
+        if d.pvs:
+            _mostrar_puntos_de_venta(d)
+        problemas = list(d.problemas)
+        if not _homologacion_probada(ctx):
+            problemas.append(
+                "Antes de producción hace falta al menos una emisión de prueba autorizada en "
+                "homologación para este CUIT (`facturitas emitir`)."
+            )
+        if problemas:
+            for pr in problemas:
+                typer.secho(f"✗ {pr}", fg=typer.colors.RED)
+            _fallar("No se activó producción: corregí lo de arriba y volvé a probar.")
+        if not yes and not _confirmar(
+            "¿Activar PRODUCCIÓN? Desde ahora cada comprobante tiene validez fiscal"
+        ):
+            typer.echo("Cancelado: el ambiente no cambió.")
+            return
+    cfg.ambiente = destino.nombre
+    config.guardar(cfg)
+    _banner_prod(destino.nombre)
+    typer.secho(f"✓ Ambiente activo: {destino.etiqueta}.", fg=typer.colors.GREEN)
+
+
+def _homologacion_probada(ctx: Contexto) -> bool:
+    return Historial(config.ruta_historial("homo")).hay_autorizados(ctx.perfil.cuit, "homo")
+
+
+@ambiente_app.callback()
+def ambiente_mostrar(ctx: typer.Context) -> None:
+    """Sin subcomando, muestra el ambiente activo."""
+    if ctx.invoked_subcommand is None:
+        cfg = config.cargar()
+        _banner_prod(cfg.ambiente)
+        typer.echo(f"Ambiente activo: {ambientes.obtener(cfg.ambiente).etiqueta}")
+        typer.echo("Cambiarlo: `facturitas ambiente usar prod|homo`.")
+
+
+@ambiente_app.command("usar")
+def ambiente_usar(
+    nombre: Annotated[str, typer.Argument(help="'homo' (pruebas) o 'prod' (validez fiscal).")],
+    perfil: PerfilOpt = None,
+    yes: Annotated[bool, typer.Option("--yes", help="No pregunta (para scripts).")] = False,
+) -> None:
+    """Cambia el ambiente activo. Producción exige que `estado --ambiente prod` dé todo OK."""
+    _ejecutar(lambda: _activar_ambiente(nombre, perfil, yes=yes))
 
 
 # --- clientes -----------------------------------------------------------------------------

@@ -7,13 +7,14 @@ import contextlib
 import json
 import os
 import tomllib
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 import platformdirs
 
+from facturitas.arca import ambientes
 from facturitas.core.models import Credencial, Perfil
 
 
@@ -29,10 +30,23 @@ def directorio_datos() -> Path:
     return ruta
 
 
-def directorio_cache() -> Path:
+def directorio_cache(ambiente: str = "homo") -> Path:
+    """Caché del TA y de los parámetros, separado por ambiente.
+
+    Homologación sigue en `cache/` (donde ya estaba: mover un TA vigente obligaría a pedir otro y
+    ARCA lo rechaza); producción va en `cache/prod/`.
+    """
     ruta = directorio_datos() / "cache"
+    if ambientes.normalizar(ambiente) == "prod":
+        ruta = ruta / "prod"
     ruta.mkdir(parents=True, exist_ok=True)
     return ruta
+
+
+def ruta_historial(ambiente: str = "homo") -> Path:
+    """Base del historial de cada ambiente (lo de homologación nunca se mezcla con lo real)."""
+    nombre = "historial-prod.sqlite" if ambientes.normalizar(ambiente) == "prod" else None
+    return directorio_datos() / (nombre or "historial.sqlite")
 
 
 def restringir_permisos(ruta: Path) -> None:
@@ -47,6 +61,7 @@ class Config:
     perfiles: dict[str, Perfil] = field(default_factory=dict)
     perfil_default: str = "default"
     carpeta_pdf: str = ""  # vacío: Documentos/Facturitas
+    ambiente: str = "homo"  # ambiente activo; solo cambia con `facturitas ambiente usar`
 
     def carpeta_base_pdf(self) -> Path:
         if self.carpeta_pdf:
@@ -62,6 +77,36 @@ class Config:
                 f"No hay un perfil '{clave}'. Configuralo con `facturitas init`."
             ) from None
 
+    def perfil_para(self, nombre: str | None, ambiente: str) -> tuple[Perfil, Credencial]:
+        """El perfil y la credencial que corresponden a un ambiente.
+
+        En producción el perfil devuelto trae el punto de venta y la credencial de producción.
+        """
+        amb = ambientes.obtener(ambiente)
+        perfil = self.perfil(nombre)
+        if not amb.es_produccion:
+            return perfil, self.credencial_de(perfil)
+        if not perfil.credencial_prod:
+            raise ConfigError(
+                "Producción todavía no está configurada para este perfil. Registrá el "
+                "certificado real y el punto de venta con `facturitas init --ambiente prod "
+                "--cert ... --key ... --punto-venta N` (ver README, «Pasar a producción»)."
+            )
+        cred = self.credenciales.get(perfil.credencial_prod)
+        if cred is None:
+            raise ConfigError(
+                f"El perfil usa la credencial de producción '{perfil.credencial_prod}', "
+                "que no existe."
+            )
+        if cred.ambiente != "prod":
+            raise ConfigError(
+                f"La credencial '{perfil.credencial_prod}' no es de producción: no se usa en prod."
+            )
+        efectivo = replace(
+            perfil, credencial=perfil.credencial_prod, punto_venta=perfil.punto_venta_prod
+        )
+        return efectivo, cred
+
     def credencial_de(self, perfil: Perfil) -> Credencial:
         try:
             return self.credenciales[perfil.credencial]
@@ -76,6 +121,8 @@ def ruta_config() -> Path:
 
 
 def _toml_valor(v: object) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
     if isinstance(v, int):
         return str(v)
     return json.dumps(str(v), ensure_ascii=False)
@@ -96,6 +143,7 @@ def cargar() -> Config:
     cfg = Config(
         perfil_default=raw.get("perfil_default", "default"),
         carpeta_pdf=raw.get("carpeta_pdf", ""),
+        ambiente=ambientes.normalizar(raw.get("ambiente", "homo")),
     )
     for nombre, d in raw.get("credenciales", {}).items():
         cfg.credenciales[nombre] = Credencial(**d)
@@ -111,6 +159,7 @@ def guardar(cfg: Config) -> None:
     cabecera = f"perfil_default = {_toml_valor(cfg.perfil_default)}\n"
     if cfg.carpeta_pdf:
         cabecera += f"carpeta_pdf = {_toml_valor(cfg.carpeta_pdf)}\n"
+    cabecera += f"ambiente = {_toml_valor(cfg.ambiente)}\n"
     partes = [cabecera]
     for nombre, c in cfg.credenciales.items():
         partes.append(_tabla(f"credenciales.{nombre}", asdict(c)))

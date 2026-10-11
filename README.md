@@ -3,9 +3,10 @@
 Facturación electrónica de ARCA (ex AFIP), **fácil, local y abierta**. Emití comprobantes sin
 entrar al portal: tus claves quedan en tu máquina y el código es MIT.
 
-> ⚠️ **Estado: M3 (MCP, en homologación).** Emite Factura C y Nota de Crédito C
-> **solo en homologación** (pruebas, sin validez fiscal), guarda historial y clientes, genera el
-> PDF, reconcilia con ARCA si se corta la red y se puede usar desde una IA (MCP). Producción todavía no está habilitada en el código.
+> ⚠️ **Estado: M3 (MCP) + soporte de producción.** Emite Factura C y Nota de Crédito C, guarda
+> historial y clientes, genera el PDF, reconcilia con ARCA si se corta la red y se puede usar
+> desde una IA (MCP). **Arranca siempre en homologación** (pruebas, sin validez fiscal):
+> producción hay que activarla a mano (ver [Pasar a producción](#pasar-a-producción)).
 > El plan completo está en [CLAUDE.md](CLAUDE.md).
 
 ## Instalación para desarrollo
@@ -46,8 +47,11 @@ Todo lo emitido queda en una base SQLite del directorio de datos (`historial.sql
 la homologación, que se marca como `HOMO` en `facturitas historial`.
 
 **Aviso de posible duplicado:** si ya emitiste una factura con el mismo perfil, receptor, importe y
-período (y no está anulada), el preview lo avisa y pide una confirmación extra. No bloquea. No
-avisa para Consumidor Final sin identificar, donde todos los tickets se parecen.
+período (y no está anulada), el preview lo menciona. Es **solo informativo**: no pide ninguna
+confirmación extra (un comercio puede facturarle dos veces al mismo cliente el mismo día). No
+avisa para Consumidor Final sin identificar, donde todos los tickets se parecen. Se puede
+apagar por perfil con `facturitas init --sin-aviso-duplicados` (y volver a prender con
+`--aviso-duplicados`).
 
 ### PDF
 
@@ -104,8 +108,8 @@ respuesta): `estado_arca`, `listar_perfiles`, `listar_clientes`, `guardar_client
 
 **Nada se emite sin confirmar:** `preparar_comprobante` (y `nota_de_credito`) devuelven un preview
 y un `borrador_id` (vence a los 15 minutos); `emitir_comprobante` exige ese borrador y
-`confirmo=true`, y si el preview avisó un posible duplicado o una factura ya anulada, además
-`confirmo_duplicado=true`.
+`confirmo=true`. Solo al **anular una factura que ya estaba anulada** hace falta además
+`confirmo_duplicado=true`. El ambiente no se puede cambiar desde la IA: solo desde la terminal.
 
 ### Conectarlo
 
@@ -155,7 +159,59 @@ y sin token ni sign.
   `facturitas init --punto-venta N`. La numeración
   de homologación es independiente de la real.
 - Para **producción** hay que crear un punto de venta nuevo desde "ABM de puntos de venta"
-  en ARCA, de tipo web services. Se hace una sola vez, más adelante.
+  en ARCA, de tipo web services (ver [Pasar a producción](#pasar-a-producción)).
+
+## Pasar a producción
+
+Facturitas arranca siempre en **homologación**. Producción (comprobantes con validez fiscal) es
+otro ambiente, con su propio certificado, su propio punto de venta, su propio historial, su propio
+caché de tickets de acceso y su propia carpeta de PDF. Nada se mezcla con lo de pruebas.
+
+### 1. En ARCA
+
+1. **Certificado de producción.** Es distinto del de homologación. Generá la clave y el pedido
+   (CSR) con `uv run python tools/gen_csr.py` (o con la herramienta que prefieras), entrá con
+   clave fiscal a **«Administración de Certificados Digitales»** (la de producción, no la de
+   homologación), agregá un alias (por ejemplo `facturitas-prod`), pegá el CSR y
+   descargá el `.crt`. Guardá el `.key` y el `.crt` fuera del repo, por ejemplo en
+   `~/.facturitas/prod/facturitas-prod.key` y `.crt`.
+2. **Relación con el web service.** En **«Administrador de Relaciones de Clave Fiscal»** →
+   *Nueva relación* → servicio **ARCA → WebServices → «Facturación Electrónica»** (`wsfe`), y
+   asociale el alias del certificado. Si facturás en nombre de otra persona, esa persona tiene que
+   delegarle `wsfe` a tu CUIT desde el mismo lugar.
+3. **Punto de venta.** En **«Administración de Puntos de Venta y Domicilios»** → *A/B/M de puntos
+   de venta* → *Agregar*, de tipo **«Factura Electrónica - Monotributo - Web Services»** (o
+   «Factura Electrónica - Responsable Inscripto - Web Services» si no sos monotributista).
+   Los puntos de venta de «Comprobantes en línea» **no sirven** para web services. Anotá el
+   número que te asignó (por ejemplo el 2); la numeración arranca en 1.
+
+### 2. En Facturitas
+
+```
+uv run facturitas init --ambiente prod --punto-venta 2      # registra el certificado y el pto. de venta reales
+uv run facturitas estado --ambiente prod                    # chequeo: no activa nada
+uv run facturitas ambiente usar prod                        # recién acá se activa
+```
+
+- `init --ambiente prod` usa por defecto `~/.facturitas/prod/facturitas-prod.crt` y `.key` si
+  existen (o pasá `--cert` y `--key`). **No activa** producción.
+- `estado --ambiente prod` consulta ARCA en producción (solo lectura) y tiene que dar todo OK:
+  FEDummy, autenticación y que el punto de venta configurado figure en `FEParamGetPtosVenta`
+  (que solo lista los de web services), sin bloqueo ni baja. Lista los puntos de venta reales con
+  su tipo y marca cuál es el configurado.
+- `ambiente usar prod` repite ese chequeo, exige además al menos una emisión de prueba autorizada
+  en homologación para ese CUIT, y pregunta antes de activar. Si algo falla, no cambia nada.
+  `facturitas ambiente` muestra el ambiente activo y `facturitas ambiente usar homo` vuelve a
+  pruebas. `facturitas config --ambiente prod|homo` hace lo mismo.
+- Con producción activa, **toda** salida de la CLI, todo preview y toda respuesta del MCP empieza
+  con `⚠️ PRODUCCIÓN — comprobante con validez fiscal` (en homologación, `🧪 HOMOLOGACIÓN`).
+- Los PDF de producción van **sin marca de agua** en `Documentos/Facturitas/<perfil>/`; los de
+  homologación siguen en la subcarpeta `homologacion/`.
+- El historial de producción es otro archivo (`historial-prod.sqlite`), así que la numeración y
+  los avisos de homologación no se cruzan con los reales. Los clientes guardados se comparten.
+- La IA (MCP) **no puede** cambiar de ambiente: solo usa el que dejaste activo.
+
+La primera factura real conviene emitirla vos, mirando el preview completo.
 
 ## Nombre de fantasía
 
@@ -166,7 +222,8 @@ Venta y Domicilios".
 
 ## Seguridad
 
-- Nunca se apunta a producción en tests, scripts ni ejemplos.
+- Nunca se apunta a producción en tests, scripts ni ejemplos. Un guard en `tests/conftest.py`
+  hace fallar cualquier test que intente conectarse a los hosts de producción de ARCA.
 - La clave privada y el certificado viven fuera del repo y no se suben nunca.
 
 ## Licencia

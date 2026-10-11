@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -78,7 +78,7 @@ def wsfe_falso(
         ambiente="homo",
         historial=Historial(),
     )
-    monkeypatch.setattr(cli, "_contexto", lambda nombre: ctx)
+    monkeypatch.setattr(cli, "_contexto", lambda nombre, ambiente=None: ctx)
     return falso
 
 
@@ -192,16 +192,26 @@ def test_preview_parte_la_descripcion_en_vez_de_truncarla(wsfe_falso: WsfeFalso)
     assert "transformación digital" in r.output  # la cola no se perdió
 
 
-def test_aviso_de_duplicado_pide_confirmacion_extra(wsfe_falso: WsfeFalso) -> None:
+def test_aviso_de_duplicado_es_informativo_y_no_pide_confirmacion_extra(
+    wsfe_falso: WsfeFalso,
+) -> None:
     args = [*ARGS_EMITIR, "--receptor-cuit", "30000000007", "--condicion-iva", "5"]
     assert runner.invoke(cli.app, [*args, "--yes"]).exit_code == 0
-    # segunda vez: avisa y, si no confirmamos el extra, no emite
-    r = runner.invoke(cli.app, args, input="s\nn\n")
-    assert "ya emitiste algo parecido" in r.output and "Parece un duplicado" in r.output
-    assert len(wsfe_falso.autorizados) == 1
-    # confirmando también el extra, emite (el aviso no bloquea)
-    r = runner.invoke(cli.app, args, input="s\ns\n")
+    # segunda vez: avisa, pero con una sola confirmación emite
+    r = runner.invoke(cli.app, args, input="s\n")
+    assert "ya emitiste algo parecido" in r.output and "Es solo un aviso" in r.output
+    assert "Parece un duplicado" not in r.output
     assert r.exit_code == 0 and len(wsfe_falso.autorizados) == 2
+
+
+def test_el_aviso_de_duplicado_se_puede_desactivar_por_perfil(wsfe_falso: WsfeFalso) -> None:
+    ctx = cli._contexto(None)
+    ctx.perfil = replace(ctx.perfil, aviso_duplicados=False)
+    args = [*ARGS_EMITIR, "--receptor-cuit", "30000000007", "--condicion-iva", "5", "--yes"]
+    runner.invoke(cli.app, args)
+    r = runner.invoke(cli.app, args)
+    assert "ya emitiste algo parecido" not in r.output
+    assert len(wsfe_falso.autorizados) == 2
 
 
 def test_corte_de_red_al_emitir_no_duplica(wsfe_falso: WsfeFalso) -> None:
@@ -266,6 +276,7 @@ def test_estado_sugiere_definir_punto_de_venta_solo_si_falta(
 ) -> None:
     sin_pv = Perfil(**{**perfil.__dict__, "punto_venta": None})
     config.guardar(config.Config({"default": credencial}, {"default": sin_pv}))
+    cli._contexto(None).perfil = sin_pv
     r = runner.invoke(cli.app, ["estado"])
     assert "init --punto-venta" in r.output
 

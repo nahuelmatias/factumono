@@ -6,10 +6,10 @@ from facturitas import config
 from facturitas.arca import ambientes
 from facturitas.arca.wsaa import Wsaa
 from facturitas.arca.wsfe import Wsfe
-from facturitas.core.models import Credencial, Perfil
+from facturitas.core.models import Comprobante, Credencial, Perfil
 from facturitas.storage.borradores import Borradores
 from facturitas.storage.clientes import Clientes
-from facturitas.storage.historial import Historial
+from facturitas.storage.historial import Historial, Registro
 
 
 @dataclass
@@ -31,18 +31,27 @@ class Contexto:
 
     @property
     def aviso_ambiente(self) -> str:
-        """Primera línea de toda respuesta del MCP: el ambiente, bien visible."""
-        if self.es_produccion:
-            return "⚠️ PRODUCCIÓN (comprobantes con validez fiscal)"
-        return "🧪 HOMOLOGACIÓN (pruebas, sin validez fiscal)"
+        """Primera línea de todo preview y respuesta: el ambiente, bien visible."""
+        return ambientes.obtener(self.ambiente).banner
+
+    @property
+    def nombre_ambiente(self) -> str:
+        return ambientes.obtener(self.ambiente).titulo
+
+    def posibles_duplicados(self, c: Comprobante) -> list[Registro]:
+        """Comprobantes parecidos ya emitidos (solo informativo); vacío si el perfil lo apagó."""
+        if not self.perfil.aviso_duplicados or self.historial is None:
+            return []
+        return self.historial.posibles_duplicados(self.perfil.cuit, self.ambiente, c)
 
 
-def construir(nombre_perfil: str | None) -> Contexto:
+def construir(nombre_perfil: str | None, ambiente: str | None = None) -> Contexto:
+    """Contexto de un perfil en el ambiente activo (o en `ambiente`, para chequear prod antes
+    de activarla)."""
     cfg = config.cargar()
-    perfil = cfg.perfil(nombre_perfil)
-    cred = cfg.credencial_de(perfil)
-    amb = ambientes.obtener(cred.ambiente)  # por ahora solo existe homologación
-    cache = config.directorio_cache()
+    amb = ambientes.obtener(ambiente or cfg.ambiente)
+    perfil, cred = cfg.perfil_para(nombre_perfil, amb.nombre)
+    cache = config.directorio_cache(amb.nombre)
     wsaa = Wsaa(cred, amb, cache)
     return Contexto(
         perfil,
@@ -52,5 +61,5 @@ def construir(nombre_perfil: str | None) -> Contexto:
         amb.etiqueta,
         perfil_nombre=nombre_perfil or cfg.perfil_default,
         ambiente=amb.nombre,
-        historial=Historial(),
+        historial=Historial(config.ruta_historial(amb.nombre)),
     )

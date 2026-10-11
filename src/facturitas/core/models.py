@@ -60,6 +60,12 @@ class Perfil:
     inicio_actividades: date | None = None
     punto_venta: int | None = None
     nombre_fantasia: str = ""
+    # Producción tiene su propia credencial y su propio punto de venta (los de homologación no
+    # sirven). `config.Config.perfil_para` los usa en lugar de `credencial`/`punto_venta`.
+    credencial_prod: str = ""
+    punto_venta_prod: int | None = None
+    # Avisar (solo informativo) cuando un comprobante se parece a uno ya emitido.
+    aviso_duplicados: bool = True
 
     @property
     def cbte_tipo_default(self) -> int:

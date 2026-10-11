@@ -17,8 +17,9 @@ por **preparar → mostrar el preview → confirmar**. Nada se emite sin que el 
    preguntá: "¿Lo emito?". Esperá la respuesta.
 3. Aclará siempre el ambiente: 🧪 **HOMOLOGACIÓN** = pruebas sin validez fiscal; ⚠️ **PRODUCCIÓN**
    = comprobantes reales. Si es producción, extremá el cuidado con el importe y el período.
-4. Si el preview trae un aviso de **posible duplicado** o de **factura ya anulada**, leéselo al
-   usuario y pasá `confirmo_duplicado=true` solo si insiste en seguir.
+4. Si el preview trae un aviso de **ya emitiste algo parecido**, mencionáselo al usuario: es solo
+   informativo y no pide confirmación extra. Si avisa que la factura a anular **ya fue
+   anulada**, leéselo y pasá `confirmo_duplicado=true` solo si insiste en seguir.
 5. Los borradores vencen a los 15 minutos: si venció, preparalo de nuevo (no lo reutilices a ciegas).
 6. No inventes datos. Si falta el importe, el cliente o el período, preguntá.
 

@@ -1,16 +1,19 @@
 """Fixtures compartidas. Todos los datos son ficticios (nada de CUITs ni claves reales)."""
 
+import socket
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import httpx
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
+from facturitas.arca import ambientes
 from facturitas.core.models import (
     FACTURA_C,
     Comprobante,
@@ -29,6 +32,61 @@ CUIT_RECEPTOR = "30000000007"  # ficticio, ídem
 
 def fixture(nombre: str) -> str:
     return (FIXTURES / nombre).read_text(encoding="utf-8")
+
+
+# Ningún test (ni el CI) puede pegarle a producción de ARCA: cualquier pedido a un host de ARCA que
+# no sea de homologación hace fallar el test, aunque el código bajo prueba se trague la excepción.
+_SUFIJOS_ARCA = (".afip.gov.ar", ".afip.gob.ar", ".arca.gob.ar")
+
+
+def es_host_de_produccion(host: str | None) -> bool:
+    h = (host or "").lower().rstrip(".")
+    if not h or h in ambientes.HOMO.hosts:
+        return False
+    return (
+        h in ambientes.PROD.hosts
+        or h.endswith(_SUFIJOS_ARCA)
+        or h in {"afip.gov.ar", "arca.gob.ar"}
+    )
+
+
+class ProduccionBloqueada(RuntimeError):
+    pass
+
+
+@pytest.fixture(autouse=True)
+def sin_produccion(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+    """Guard: falla cualquier request a los hosts de producción de ARCA."""
+    intentos: list[str] = []
+
+    def vigilar(host: str | None) -> None:
+        if es_host_de_produccion(host):
+            intentos.append(str(host))
+            raise ProduccionBloqueada(f"Un test intentó conectarse a producción de ARCA ({host}).")
+
+    enviar = httpx.Client.send
+    enviar_async = httpx.AsyncClient.send
+    resolver = socket.getaddrinfo
+
+    def send(self: httpx.Client, request: httpx.Request, **kw: object) -> httpx.Response:
+        vigilar(request.url.host)
+        return enviar(self, request, **kw)  # type: ignore[arg-type]
+
+    async def send_async(
+        self: httpx.AsyncClient, request: httpx.Request, **kw: object
+    ) -> httpx.Response:
+        vigilar(request.url.host)
+        return await enviar_async(self, request, **kw)  # type: ignore[arg-type]
+
+    def getaddrinfo(host: str | bytes | None, *a: object, **kw: object) -> object:
+        vigilar(host.decode() if isinstance(host, bytes) else host)
+        return resolver(host, *a, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(httpx.Client, "send", send)
+    monkeypatch.setattr(httpx.AsyncClient, "send", send_async)
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    yield intentos
+    assert not intentos, f"Se intentó llegar a producción de ARCA: {intentos}"
 
 
 @pytest.fixture(autouse=True)
