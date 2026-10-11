@@ -8,7 +8,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from facturitas import config
+from facturitas import __version__, config
 from facturitas.arca.qr import URL_QR, url_qr
 from facturitas.core.models import CbteAsociado, Comprobante, Concepto, Item
 from facturitas.pdf.render import renderizar
@@ -170,3 +170,10 @@ def test_guardar_pdf_en_carpeta_configurable(tmp_path: Path, comprobante: Compro
 def test_carpeta_por_defecto_es_documentos_facturitas() -> None:
     base = config.Config().carpeta_base_pdf()
     assert base.name == "Facturitas" and base.parent.name.lower() in ("documents", "documentos")
+
+
+def test_metadata_del_pdf(comprobante: Comprobante) -> None:
+    meta = PdfReader(BytesIO(renderizar(comprobante, 1, CAE, VTO, homologacion=False))).metadata
+    assert meta is not None
+    assert meta.author == "EMISOR FICTICIO"
+    assert meta.creator == f"Facturitas {__version__}" == meta.producer

@@ -15,6 +15,7 @@ from reportlab.lib.utils import simpleSplit
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
+from facturitas import __version__
 from facturitas.arca.qr import url_qr
 from facturitas.core.fechas import mostrar
 from facturitas.core.models import NOMBRES_COMPROBANTE, Comprobante, Concepto, Item
@@ -317,7 +318,9 @@ def renderizar(
     buf = BytesIO()
     pdf = Canvas(buf, pagesize=A4, pageCompression=1)
     pdf.setTitle(f"{_nombre_comprobante(c).title()} {c.punto_venta:05d}-{numero:08d}")
-    pdf.setAuthor("Facturitas")
+    pdf.setAuthor(c.perfil.razon_social)
+    pdf.setCreator(f"Facturitas {__version__}")
+    pdf.setProducer(f"Facturitas {__version__}")
     h = _Hoja(pdf)
     url = url_qr(
         fecha=c.fecha,

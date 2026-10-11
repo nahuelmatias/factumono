@@ -151,7 +151,7 @@ facturitas/
   *Acepta:* el prompt de ejemplo de Acciona funciona de punta a punta desde Claude Desktop en homologación.
 - **M4 · Web UI + asistente de certificado + botón "Conectar con mi IA"**.
   *Acepta:* una persona no técnica completa el setup en homologación siguiendo solo la UI.
-- **M5 · API REST + Factura A/B con IVA** (para Postaberry), token local, OpenAPI y ejemplos de `curl`.
+- **M5 · API REST + Factura A/B con IVA** (para Postaberry), token local, OpenAPI y ejemplos de `curl`. Incluye **Nota de Crédito parcial** (en M2 la NC es solo total).
   *Acepta:* un script que simula el POS emite 50 tickets seguidos sin duplicados ni errores.
 - **M6 · Instaladores**: workflow de release con `.exe` (Inno Setup), AppImage y `.dmg`.
   *Acepta:* instalar desde el Release en una Windows limpia y emitir en homologación sin tener Python instalado.
