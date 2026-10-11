@@ -12,6 +12,9 @@ from enum import IntEnum
 from facturitas.core.money import redondear
 
 FACTURA_C = 11
+# Nota de crédito que anula cada tipo de factura.
+NOTA_DE_CREDITO_DE = {1: 3, 6: 8, FACTURA_C: 13}
+NOTA_DE_CREDITO_C = 13
 NOMBRES_COMPROBANTE = {
     1: "Factura A",
     3: "Nota de Crédito A",
@@ -103,6 +106,17 @@ class Item:
 
 
 @dataclass(frozen=True)
+class CbteAsociado:
+    """Comprobante que una nota de crédito anula (`CbtesAsoc` de WSFE)."""
+
+    tipo: int
+    punto_venta: int
+    numero: int
+    cuit: str
+    fecha: date | None = None
+
+
+@dataclass(frozen=True)
 class Comprobante:
     perfil: Perfil
     punto_venta: int
@@ -118,12 +132,20 @@ class Comprobante:
     moneda: str = "PES"
     cotizacion: Decimal = Decimal(1)
     extras: dict[str, str] = field(default_factory=dict)
+    cbte_asoc: CbteAsociado | None = None
+    motivo: str = ""
 
     @property
     def total(self) -> Decimal:
         return sum((i.subtotal for i in self.items), Decimal(0))
 
+    @property
+    def es_nota_de_credito(self) -> bool:
+        return self.cbte_tipo in NOTA_DE_CREDITO_DE.values()
+
     def validar(self) -> None:
+        if self.es_nota_de_credito and not self.cbte_asoc:
+            raise ValueError("Una nota de crédito necesita el comprobante que anula.")
         if not self.items:
             raise ValueError("El comprobante necesita al menos un ítem.")
         if self.total <= 0:

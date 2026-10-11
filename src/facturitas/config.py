@@ -46,6 +46,12 @@ class Config:
     credenciales: dict[str, Credencial] = field(default_factory=dict)
     perfiles: dict[str, Perfil] = field(default_factory=dict)
     perfil_default: str = "default"
+    carpeta_pdf: str = ""  # vacío: Documentos/Facturitas
+
+    def carpeta_base_pdf(self) -> Path:
+        if self.carpeta_pdf:
+            return Path(self.carpeta_pdf).expanduser()
+        return platformdirs.user_documents_path() / "Facturitas"
 
     def perfil(self, nombre: str | None = None) -> Perfil:
         clave = nombre or self.perfil_default
@@ -87,7 +93,10 @@ def cargar() -> Config:
         return Config()
     with ruta.open("rb") as f:
         raw = tomllib.load(f)
-    cfg = Config(perfil_default=raw.get("perfil_default", "default"))
+    cfg = Config(
+        perfil_default=raw.get("perfil_default", "default"),
+        carpeta_pdf=raw.get("carpeta_pdf", ""),
+    )
     for nombre, d in raw.get("credenciales", {}).items():
         cfg.credenciales[nombre] = Credencial(**d)
     for nombre, d in raw.get("perfiles", {}).items():
@@ -99,7 +108,10 @@ def cargar() -> Config:
 
 
 def guardar(cfg: Config) -> None:
-    partes = [f"perfil_default = {_toml_valor(cfg.perfil_default)}\n"]
+    cabecera = f"perfil_default = {_toml_valor(cfg.perfil_default)}\n"
+    if cfg.carpeta_pdf:
+        cabecera += f"carpeta_pdf = {_toml_valor(cfg.carpeta_pdf)}\n"
+    partes = [cabecera]
     for nombre, c in cfg.credenciales.items():
         partes.append(_tabla(f"credenciales.{nombre}", asdict(c)))
     for nombre, p in cfg.perfiles.items():

@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -12,6 +13,8 @@ from facturitas.arca.wsfe import Wsfe, construir_detalle_factura_c
 from facturitas.core.models import Comprobante, Concepto, Credencial
 from tests.conftest import CUIT_EMISOR, fixture
 
+AHORA = datetime(2026, 10, 10, 15, 0, tzinfo=UTC)
+
 
 @pytest.fixture
 def wsfe(credencial: Credencial, tmp_path: Path) -> Wsfe:
@@ -19,7 +22,8 @@ def wsfe(credencial: Credencial, tmp_path: Path) -> Wsfe:
         respx.post(HOMO.wsaa_url).mock(
             return_value=httpx.Response(200, text=fixture("wsaa_ok.xml"))
         )
-        wsaa = Wsaa(credencial, HOMO, tmp_path)
+        # reloj fijo: el TA grabado vence el 10/10/2026 22:00 (hora argentina)
+        wsaa = Wsaa(credencial, HOMO, tmp_path, ahora=lambda: AHORA)
         wsaa.ticket()  # deja el TA en caché
     return Wsfe(CUIT_EMISOR, wsaa, HOMO, tmp_path)
 

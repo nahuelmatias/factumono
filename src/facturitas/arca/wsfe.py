@@ -24,7 +24,9 @@ from facturitas.arca.errors import (
     traducir,
 )
 from facturitas.arca.wsaa import Wsaa
-from facturitas.core.models import FACTURA_C, Comprobante, Concepto
+from facturitas.core.fechas import a_arca as _fecha
+from facturitas.core.fechas import de_arca
+from facturitas.core.models import FACTURA_C, NOTA_DE_CREDITO_C, Comprobante, Concepto
 from facturitas.core.money import redondear
 
 NS = "http://ar.gov.afip.dif.FEV1/"
@@ -47,6 +49,27 @@ class CondicionIva:
 
 
 @dataclass(frozen=True)
+class ComprobanteConsultado:
+    """Respuesta de `FECompConsultar` para un comprobante que existe en ARCA."""
+
+    punto_venta: int
+    cbte_tipo: int
+    numero: int
+    concepto: int
+    doc_tipo: int
+    doc_nro: int
+    fecha: date
+    importe_total: Decimal
+    resultado: str
+    cae: str
+    cae_vto: str
+    periodo_desde: date | None = None
+    periodo_hasta: date | None = None
+    vto_pago: date | None = None
+    condicion_iva_id: int | None = None
+
+
+@dataclass(frozen=True)
 class ResultadoCae:
     resultado: str
     cae: str
@@ -62,10 +85,6 @@ def _sin_ns(root: ET.Element) -> ET.Element:
     return root
 
 
-def _fecha(d: date) -> str:
-    return d.strftime("%Y%m%d")
-
-
 def _num(d: Decimal) -> str:
     return f"{redondear(d):.2f}"
 
@@ -78,8 +97,12 @@ def normalizar_texto(t: str) -> str:
 
 
 def construir_detalle_factura_c(c: Comprobante, numero: int) -> str:
-    """XML de `FECAEDetRequest` para Factura C: ImpNeto = total, ImpIVA = 0, sin array Iva."""
-    if c.cbte_tipo != FACTURA_C:
+    """XML de `FECAEDetRequest` para Factura C / Nota de Crédito C.
+
+    ImpNeto = total, ImpIVA = 0, sin array Iva. La nota de crédito agrega `CbtesAsoc` con la
+    factura que anula (va después de `CondicionIVAReceptorId`, según el WSDL).
+    """
+    if c.cbte_tipo not in (FACTURA_C, NOTA_DE_CREDITO_C):
         raise ValueError("Por ahora solo se puede emitir Factura C (A/B llegan en el hito M5).")
     c.validar()
     total = _num(c.total)
@@ -109,6 +132,15 @@ def construir_detalle_factura_c(c: Comprobante, numero: int) -> str:
         f"<ar:MonCotiz>{c.cotizacion}</ar:MonCotiz>",
         f"<ar:CondicionIVAReceptorId>{c.receptor.condicion_iva_id}</ar:CondicionIVAReceptorId>",
     ]
+    if c.cbte_asoc:
+        a = c.cbte_asoc
+        partes.append(
+            "<ar:CbtesAsoc><ar:CbteAsoc>"
+            f"<ar:Tipo>{a.tipo}</ar:Tipo><ar:PtoVta>{a.punto_venta}</ar:PtoVta>"
+            f"<ar:Nro>{a.numero}</ar:Nro><ar:Cuit>{escape(a.cuit)}</ar:Cuit>"
+            + (f"<ar:CbteFch>{_fecha(a.fecha)}</ar:CbteFch>" if a.fecha else "")
+            + "</ar:CbteAsoc></ar:CbtesAsoc>"
+        )
     return "<ar:FECAEDetRequest>" + "".join(partes) + "</ar:FECAEDetRequest>"
 
 
@@ -137,8 +169,23 @@ class Wsfe:
             f"<ar:Cuit>{self._cuit}</ar:Cuit></ar:Auth>"
         )
 
-    def _llamar(self, metodo: str, cuerpo: str = "", *, con_auth: bool = True) -> ET.Element:
-        interior = (self._auth() if con_auth else "") + cuerpo
+    def _llamar(
+        self, metodo: str, cuerpo: str = "", *, con_auth: bool = True, escribe: bool = False
+    ) -> ET.Element:
+        """POST SOAP. Con `escribe=True` (FECAESolicitar), una vez enviado el pedido cualquier
+        falla de transporte o de formato se informa como `EstadoIncierto`: pudo haber llegado."""
+        interior = (self._auth() if con_auth else "") + cuerpo  # si falla acá, no se envió nada
+        try:
+            return self._post(metodo, interior)
+        except (httpx.HTTPError, ArcaError) as e:
+            if not escribe:
+                raise
+            raise EstadoIncierto(
+                "Se cortó la comunicación con ARCA o su respuesta no se pudo leer después de "
+                f"pedir el CAE, así que NO se sabe si el comprobante quedó autorizado. ({e})"
+            ) from None
+
+    def _post(self, metodo: str, interior: str) -> ET.Element:
         sobre = (
             '<?xml version="1.0" encoding="utf-8"?>'
             '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
@@ -260,14 +307,59 @@ class Wsfe:
     def proximo_numero(self, punto_venta: int, cbte_tipo: int) -> int:
         return self.ultimo_autorizado(punto_venta, cbte_tipo) + 1
 
-    def emitir(self, c: Comprobante) -> ResultadoCae:
-        """Pide el CAE. Consulta el último autorizado justo antes de enviar.
+    def consultar(
+        self, punto_venta: int, cbte_tipo: int, numero: int
+    ) -> ComprobanteConsultado | None:
+        """FECompConsultar. Devuelve None si ARCA no tiene ese comprobante (error 602)."""
+        r = self._llamar(
+            "FECompConsultar",
+            "<ar:FeCompConsReq>"
+            f"<ar:CbteTipo>{cbte_tipo}</ar:CbteTipo><ar:CbteNro>{numero}</ar:CbteNro>"
+            f"<ar:PtoVta>{punto_venta}</ar:PtoVta></ar:FeCompConsReq>",
+        )
+        errores = self._errores(r)
+        if errores and all(c == 602 for c, _ in errores):
+            return None
+        self._fallar_si_hay_errores(r)
+        g = r.find("./ResultGet")
+        if g is None:
+            return None
 
-        Ojo: llamar solo después de que el usuario confirmó el preview. Si se corta la
-        comunicación una vez enviado el pedido, no se sabe si ARCA lo autorizó: se levanta
-        `EstadoIncierto` y NO se reintenta (la reconciliación llega en M2).
+        def fecha(campo: str) -> date | None:
+            v = (g.findtext(campo) or "").strip()
+            return de_arca(v) if v else None
+
+        cond = (g.findtext("CondicionIVAReceptorId") or "").strip()
+        return ComprobanteConsultado(
+            punto_venta=int(g.findtext("PtoVta") or punto_venta),
+            cbte_tipo=int(g.findtext("CbteTipo") or cbte_tipo),
+            numero=int(g.findtext("CbteDesde") or numero),
+            concepto=int(g.findtext("Concepto") or 0),
+            doc_tipo=int(g.findtext("DocTipo") or 0),
+            doc_nro=int(g.findtext("DocNro") or 0),
+            fecha=fecha("CbteFch") or date.min,
+            importe_total=Decimal((g.findtext("ImpTotal") or "0").strip()),
+            resultado=(g.findtext("Resultado") or "").strip(),
+            cae=(g.findtext("CodAutorizacion") or "").strip(),
+            cae_vto=(g.findtext("FchVto") or "").strip(),
+            periodo_desde=fecha("FchServDesde"),
+            periodo_hasta=fecha("FchServHasta"),
+            vto_pago=fecha("FchVtoPago"),
+            condicion_iva_id=int(cond) if cond else None,
+        )
+
+    def emitir(self, c: Comprobante) -> ResultadoCae:
+        """Numera con `FECompUltimoAutorizado + 1` justo antes de pedir el CAE.
+
+        Ojo: llamar solo después de que el usuario confirmó el preview. Quien necesite
+        idempotencia y reconciliación usa `core.service.emitir`, que guarda el número en el
+        historial antes de enviar.
         """
-        numero = self.proximo_numero(c.punto_venta, c.cbte_tipo)
+        return self.solicitar_cae(c, self.proximo_numero(c.punto_venta, c.cbte_tipo))
+
+    def solicitar_cae(self, c: Comprobante, numero: int) -> ResultadoCae:
+        """FECAESolicitar. Si se corta la comunicación una vez enviado el pedido, no se sabe si
+        ARCA lo autorizó: se levanta `EstadoIncierto` y NO se reintenta (hay que reconciliar)."""
         detalle = construir_detalle_factura_c(c, numero)
         cuerpo = (
             "<ar:FeCAEReq><ar:FeCabReq>"
@@ -275,18 +367,14 @@ class Wsfe:
             f"<ar:CbteTipo>{c.cbte_tipo}</ar:CbteTipo></ar:FeCabReq>"
             f"<ar:FeDetReq>{detalle}</ar:FeDetReq></ar:FeCAEReq>"
         )
-        try:
-            r = self._llamar("FECAESolicitar", cuerpo)
-        except httpx.HTTPError as e:
-            raise EstadoIncierto(
-                "Se cortó la comunicación con ARCA al pedir el CAE: NO se sabe si el comprobante "
-                f"{numero} quedó autorizado. No reintentes a ciegas: revisá con "
-                f"`facturitas ultimo` si el último número subió. ({e})"
-            ) from None
+        r = self._llamar("FECAESolicitar", cuerpo, escribe=True)
         self._fallar_si_hay_errores(r)
         det = r.find("./FeDetResp/FECAEDetResponse")
         if det is None:
-            raise ArcaError("La respuesta de FECAESolicitar no trae el detalle del comprobante.")
+            raise EstadoIncierto(
+                "La respuesta de FECAESolicitar no trae el detalle del comprobante: NO se sabe "
+                "si quedó autorizado."
+            )
         obs = [
             traducir(int(o.findtext("Code") or 0), (o.findtext("Msg") or "").strip())
             for o in det.findall("./Observaciones/Obs")

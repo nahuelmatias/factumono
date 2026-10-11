@@ -41,3 +41,8 @@ def test_ultimo_autorizado(wsfe: Wsfe) -> None:
 
 def test_condiciones_iva_incluyen_consumidor_final(wsfe: Wsfe) -> None:
     assert any("consumidor final" in c.descripcion.lower() for c in wsfe.condiciones_iva_receptor())
+
+
+def test_consultar_comprobante_inexistente_devuelve_none(wsfe: Wsfe) -> None:
+    ultimo = wsfe.ultimo_autorizado(1, 11)
+    assert wsfe.consultar(1, 11, ultimo + 100000) is None
