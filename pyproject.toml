@@ -8,6 +8,7 @@ requires-python = ">=3.12"
 dependencies = [
     "cryptography>=43",
     "httpx>=0.27",
+    "mcp>=2.3.0",
     "platformdirs>=4",
     "qrcode>=8.2",
     "reportlab>=5.0.1",

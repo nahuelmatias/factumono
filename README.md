@@ -3,9 +3,9 @@
 Facturación electrónica de ARCA (ex AFIP), **fácil, local y abierta**. Emití comprobantes sin
 entrar al portal: tus claves quedan en tu máquina y el código es MIT.
 
-> ⚠️ **Estado: M2 (comprobante completo, en homologación).** Emite Factura C y Nota de Crédito C
-> **solo en homologación** (pruebas, sin validez fiscal), guarda historial, genera el PDF y
-> reconcilia con ARCA si se corta la red. Producción todavía no está habilitada en el código.
+> ⚠️ **Estado: M3 (MCP, en homologación).** Emite Factura C y Nota de Crédito C
+> **solo en homologación** (pruebas, sin validez fiscal), guarda historial y clientes, genera el
+> PDF, reconcilia con ARCA si se corta la red y se puede usar desde una IA (MCP). Producción todavía no está habilitada en el código.
 > El plan completo está en [CLAUDE.md](CLAUDE.md).
 
 ## Instalación para desarrollo
@@ -77,6 +77,61 @@ crédito, pide una confirmación extra. Las notas de crédito parciales llegan m
 
 La configuración (rutas al certificado, datos del perfil) se guarda en el directorio de datos
 del usuario (en Windows, `%LOCALAPPDATA%/facturitas/config.toml`), nunca en el repo.
+
+### Clientes y "la de siempre"
+
+```
+uv run facturitas cliente agregar acciona --nombre "ACCIONA IT S.R.L" --cuit 30710581467 ^
+    --condicion-iva "IVA Responsable Inscripto" --descripcion "Servicios de innovación" ^
+    --unidad "otras unidades" --concepto servicios --vto-dias 0
+uv run facturitas cliente listar              # (también: editar, borrar)
+uv run facturitas emitir --cliente acciona --precio "1.093.843,20" --periodo septiembre
+uv run facturitas emitir --cliente seba --repetir-ultima
+```
+
+Los clientes se guardan por perfil en la base local del usuario (nunca en el repo). Con
+`--cliente` se usan sus datos y defaults; `--repetir-ultima` repite la última factura a ese
+cliente con el período corrido al mes que sigue (un mes completo pasa al mes completo siguiente;
+otro tipo de período conserva sus días corridos un mes). `--periodo` acepta `septiembre`,
+`septiembre 2026`, `09/2026` o `DD/MM/AAAA al DD/MM/AAAA`.
+
+## Usarlo desde una IA (MCP)
+
+`facturitas mcp` es un servidor MCP por stdio. Las tools (todas indican el ambiente en cada
+respuesta): `estado_arca`, `listar_perfiles`, `listar_clientes`, `guardar_cliente`,
+`ultimo_comprobante`, `listar_comprobantes`, `preparar_comprobante`, `emitir_comprobante`,
+`consultar_comprobante`, `reimprimir_pdf`, `nota_de_credito` y `resumen_facturacion`.
+
+**Nada se emite sin confirmar:** `preparar_comprobante` (y `nota_de_credito`) devuelven un preview
+y un `borrador_id` (vence a los 15 minutos); `emitir_comprobante` exige ese borrador y
+`confirmo=true`, y si el preview avisó un posible duplicado o una factura ya anulada, además
+`confirmo_duplicado=true`.
+
+### Conectarlo
+
+```
+uv run facturitas mcp instalar      # agrega Facturitas a Claude Desktop (hace backup antes)
+uv run facturitas mcp instalar --solo-mostrar   # solo muestra los snippets
+```
+
+Escribe en `claude_desktop_config.json` la entrada `uv run --directory <repo> facturitas mcp`
+(con backup `*.bak-<fecha>` del archivo anterior; no toca nada más) y muestra los equivalentes:
+
+```
+# Claude Code
+claude mcp add facturitas -- uv run --directory <repo> facturitas mcp
+# Gemini CLI
+gemini mcp add facturitas uv run --directory <repo> facturitas mcp
+```
+
+Reiniciá Claude Desktop (cerralo del todo) para que aparezca. Frases que funcionan:
+*"Facturale a Acciona 1.093.843,20 por septiembre"*, *"Hacele la de siempre a Seba"*,
+*"¿Cuánto facturé este año?"*, *"Mostrame las últimas 5 facturas"*, *"Anulá la factura 5"*.
+Siempre te muestra el preview y espera tu confirmación.
+
+La skill [`skills/facturacion-mensual/SKILL.md`](skills/facturacion-mensual/SKILL.md) le
+explica a la IA la rutina mensual (qué preguntar, qué defaults usar y que nunca confirme sin
+mostrar el preview). Copiala a tu carpeta de skills (por ejemplo `~/.claude/skills/`).
 
 ## Tests
 
