@@ -1,14 +1,11 @@
 """Texto de preview de un comprobante, que se muestra antes de pedir el CAE."""
 
-from datetime import date
+import textwrap
 
 from facturitas.core import cuit as cuit_mod
+from facturitas.core.fechas import mostrar as _fecha
 from facturitas.core.models import NOMBRES_COMPROBANTE, Comprobante, Concepto
 from facturitas.core.money import formatear_ar
-
-
-def _fecha(d: date) -> str:
-    return d.strftime("%d/%m/%Y")
 
 
 def texto_preview(c: Comprobante, etiqueta_ambiente: str, numero: int) -> str:
@@ -34,6 +31,10 @@ def texto_preview(c: Comprobante, etiqueta_ambiente: str, numero: int) -> str:
     if r.domicilio:
         lineas.append(f"              Domicilio: {r.domicilio}")
     lineas.append(f" Condición de venta: {c.condicion_venta}")
+    if c.cbte_asoc:
+        a = c.cbte_asoc
+        anulado = NOMBRES_COMPROBANTE.get(a.tipo, f"Comprobante {a.tipo}")
+        lineas.append(f" Anula: {anulado} {a.punto_venta:05d}-{a.numero:08d} — Motivo: {c.motivo}")
     if c.concepto in (Concepto.SERVICIOS, Concepto.PRODUCTOS_Y_SERVICIOS):
         assert c.periodo_desde and c.periodo_hasta and c.vto_pago
         lineas.append(
@@ -45,10 +46,13 @@ def texto_preview(c: Comprobante, etiqueta_ambiente: str, numero: int) -> str:
         " Cód  Descripción                    Cant. U.Medida        P.Unit.   Subtotal",
     ]
     for i in c.items:
+        # La descripción se parte en varias líneas (no se trunca); los importes van en la primera.
+        desc = textwrap.wrap(i.descripcion, 30, break_long_words=True) or [""]
         lineas.append(
-            f" {i.codigo:<4} {i.descripcion[:30]:<30} {i.cantidad:>5} {i.unidad[:14]:<14}"
+            f" {i.codigo:<4} {desc[0]:<30} {i.cantidad:>5} {i.unidad[:14]:<14}"
             f" {formatear_ar(i.precio_unitario):>11} {formatear_ar(i.subtotal):>10}"
         )
+        lineas += [f" {'':<4} {resto}" for resto in desc[1:]]
     lineas += [
         "-" * 70,
         f" TOTAL: $ {formatear_ar(c.total)}   (Factura C: sin discriminar IVA)",
