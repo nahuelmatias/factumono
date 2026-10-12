@@ -22,3 +22,26 @@ jobs:
       - run: uv run mypy
       - run: uv run pytest
       - run: uv run facturitas --version
+
+  empaquetado-windows:
+    # Solo construye el ejecutable y el instalador y hace el smoke test (no publica nada).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync
+      - name: Instalar Inno Setup si falta
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+      - name: Construir, smoke test e instalador
+        shell: pwsh
+        run: pwsh packaging/build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Facturitas-Setup
+          path: build/installer/*

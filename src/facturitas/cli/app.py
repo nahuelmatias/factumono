@@ -182,12 +182,12 @@ def init(
     ] = None,
     nombre: Annotated[str, typer.Option(help="Nombre con el que se guarda el perfil.")] = "default",
     ambiente: Annotated[
-        str,
+        str | None,
         typer.Option(
             help="'homo' (por defecto) o 'prod': registra el certificado y el punto de venta "
             "de producción. No activa producción: eso es `facturitas ambiente usar prod`."
         ),
-    ] = "homo",
+    ] = None,
     aviso_duplicados: Annotated[
         bool | None,
         typer.Option(
@@ -196,12 +196,25 @@ def init(
         ),
     ] = None,
 ) -> None:
-    """Registra la credencial y el perfil. Volvé a correrlo para modificar."""
+    """Asistente de configuración (sin opciones) o registro directo de credencial y perfil.
+
+    Sin opciones guía paso a paso: genera la clave y el CSR, explica los trámites en ARCA, valida
+    el certificado y prueba la conexión. Con opciones (--cert, --key, ...) registra los datos
+    directamente. Se puede cortar y retomar.
+    """
 
     def run() -> None:
+        sin_opciones = all(
+            v is None
+            for v in (cuit, cuit_operador, cert, key, razon_social, condicion_iva, domicilio,
+                      iibb, inicio_actividades, punto_venta, nombre_fantasia, aviso_duplicados)
+        ) and nombre == "default"  # fmt: skip
+        if sin_opciones:
+            _asistente(ambiente)
+            return
         cfg = config.cargar()
         previo = cfg.perfiles.get(nombre)
-        if ambientes.obtener(ambiente).es_produccion:
+        if ambientes.obtener(ambiente or "homo").es_produccion:
             _init_produccion(
                 cfg, nombre, previo, cuit_operador, cert, key, punto_venta, aviso_duplicados
             )
@@ -286,6 +299,53 @@ def init(
         typer.echo("  Ambiente: HOMOLOGACIÓN. Siguiente paso: `facturitas estado`.")
 
     _ejecutar(run)
+
+
+class _Consola:
+    """Entrada/salida del asistente sobre la terminal."""
+
+    def preguntar(self, texto: str, defecto: str | None = None) -> str:
+        return str(
+            typer.prompt(
+                texto, default=defecto if defecto is not None else "", show_default=bool(defecto)
+            )
+        )
+
+    def confirmar(self, texto: str, defecto: bool = True) -> bool:
+        r = typer.prompt(f"{texto} [{'S/n' if defecto else 's/N'}]", default="", show_default=False)
+        r = str(r).strip().lower()
+        if not r:
+            return defecto
+        return r in ("s", "si", "sí", "y", "yes")
+
+    def mostrar(self, texto: str = "") -> None:
+        typer.echo(texto)
+
+    def abrir(self, url: str) -> None:
+        import webbrowser
+
+        webbrowser.open(url)
+
+
+def _verificar_estado(perfil: str, ambiente: str) -> bool:
+    """Corre `estado` (solo lectura) y dice si salió bien."""
+    try:
+        estado(perfil=perfil, offline=False, ambiente=ambiente)
+    except typer.Exit as e:
+        return e.exit_code == 0
+    return True
+
+
+def _asistente(ambiente: str | None) -> None:
+    from facturitas.cli.asistente import Asistente
+
+    if not sys.stdin.isatty():
+        raise ValueError(
+            "El asistente es interactivo. En un script usá las opciones: `facturitas init "
+            "--cuit ... --cert ... --key ... --razon-social ... --condicion-iva ... "
+            "--domicilio ...`."
+        )
+    Asistente(_Consola(), _verificar_estado).correr(ambiente)
 
 
 def _init_produccion(

@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -61,3 +62,17 @@ def test_snippets_para_otros_clientes() -> None:
     assert "claude mcp add facturitas -- uv run --directory C:/repo facturitas mcp" in s
     assert "gemini mcp add facturitas uv run --directory C:/repo facturitas mcp" in s
     assert '"mcpServers"' in s
+
+
+def test_entrada_empaquetada_usa_el_propio_ejecutable(monkeypatch: pytest.MonkeyPatch) -> None:
+    exe = r"C:\Users\yo\AppData\Local\Programs\Facturitas\facturitas.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", exe)
+    e = instalar.entrada_mcp()
+    assert e["args"] == ["mcp"] and "uv" not in e["command"].lower()
+    assert Path(e["command"]) == Path(exe).resolve()
+    assert instalar.empaquetado()
+
+
+def test_entrada_desde_el_repo_no_es_empaquetada() -> None:
+    assert not instalar.empaquetado()

@@ -9,6 +9,31 @@ entrar al portal: tus claves quedan en tu máquina y el código es MIT.
 > producción hay que activarla a mano (ver [Pasar a producción](#pasar-a-producción)).
 > El plan completo está en [CLAUDE.md](CLAUDE.md).
 
+## Instalar en 5 minutos (Windows)
+
+No hace falta saber de programación ni tener Python.
+
+1. **Descargá** `Facturitas-Setup-x.y.z.exe` desde la
+   [última versión](https://github.com/nahuelmatias/facturitas/releases/latest) (sección *Assets*).
+2. **Abrilo.** Windows va a mostrar un cartel azul *«Windows protegió su PC»* (SmartScreen)
+   porque la aplicación todavía **no está firmada**. Es normal: tocá **Más información →
+   Ejecutar de todas formas**. (Si querés, verificá antes el SHA256 que figura en la página de la
+   versión: en PowerShell, `Get-FileHash .\Facturitas-Setup-x.y.z.exe`.)
+3. **Instalá.** Se instala solo para tu usuario (no pide permisos de administrador). Al final
+   dejá tildadas las dos casillas:
+   - *Conectar con Claude Desktop* (si lo usás, para facturar charlando).
+   - *Abrir el asistente de configuración*.
+4. **Seguí el asistente** en la ventana negra: te pide tu CUIT y tus datos, crea tu clave, te
+   explica paso a paso qué hacer en el sitio de ARCA (y lo abre por vos), te pide el archivo
+   `.crt` que descargás (podés arrastrarlo a la ventana) y prueba que todo funcione. Empezá por
+   **homologación** (pruebas, sin validez fiscal). Si se corta a la mitad, volvé a abrirlo desde
+   *Inicio → Facturitas – Configurar*: sigue donde quedó.
+5. **Facturá.** Desde Claude Desktop (reiniciándolo la primera vez) o desde una terminal:
+   `facturitas emitir`.
+
+Desinstalar (*Configuración → Aplicaciones*) **no borra** tus datos, tu historial ni tus
+certificados.
+
 ## Instalación para desarrollo
 
 Requiere Python 3.12 y [uv](https://docs.astral.sh/uv/).
@@ -172,7 +197,7 @@ caché de tickets de acceso y su propia carpeta de PDF. Nada se mezcla con lo de
 ### 1. En ARCA
 
 1. **Certificado de producción.** Es distinto del de homologación. Generá la clave y el pedido
-   (CSR) con `uv run python tools/gen_csr.py` (o con la herramienta que prefieras), entrá con
+   (CSR) con `facturitas init` (el asistente lo hace por vos), entrá con
    clave fiscal a **«Administración de Certificados Digitales»** (la de producción, no la de
    homologación), agregá un alias (por ejemplo `facturitas-prod`), pegá el CSR y
    descargá el `.crt`. Guardá el `.key` y el `.crt` fuera del repo, por ejemplo en

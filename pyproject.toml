@@ -21,6 +21,7 @@ facturitas = "facturitas.cli.app:main"
 [dependency-groups]
 dev = [
     "mypy>=1.10",
+    "pyinstaller>=6.22.3",
     "pypdf>=6.20.0",
     "pytest>=8",
     "respx>=0.21",

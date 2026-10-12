@@ -46,3 +46,5 @@ Thumbs.db
 
 # --- Claude Code (config local personal) ---
 .claude/settings.local.json
+.venv-build/
+build/

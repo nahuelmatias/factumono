@@ -101,7 +101,7 @@ Documentación: manuales de WSAA y WSFEv1 en el sitio de ARCA (sección Web Serv
 - Caso Postaberry: `POST /vouchers` con `confirm=true` directo (el POS ya confirmó en caja), Consumidor Final, ítems `[{qty: 1, unit: "docena", desc: "Facturas", unit_price: ...}, {qty: 0.5, unit: "kg", desc: "Pan", unit_price: ...}]`.
 
 **CLI**
-- `facturitas init` (asistente: genera clave + CSR y explica paso a paso qué hacer en ARCA). **Nota:** en M4 `facturitas init` reemplaza a `tools/gen_csr.py`; hasta entonces el script sigue siendo el generador de CSR. En M1 `init` solo registra credencial y perfil, `facturitas cert import`, `facturitas perfil ...`, `facturitas cliente ...`, `facturitas emitir ...` (con preview y confirmación interactiva, `--yes` para scripts), `facturitas lote archivo.xlsx`, `facturitas ultimo`, `facturitas estado`.
+- `facturitas init` (asistente: genera clave + CSR y explica paso a paso qué hacer en ARCA). **Hecho (Instalador v0.1):** `facturitas init` sin opciones es un asistente interactivo en consola (retomable) que reemplazó a `tools/gen_csr.py`; con opciones (`--cert`, `--key`, ...) registra credencial y perfil directamente, `facturitas cert import`, `facturitas perfil ...`, `facturitas cliente ...`, `facturitas emitir ...` (con preview y confirmación interactiva, `--yes` para scripts), `facturitas lote archivo.xlsx`, `facturitas ultimo`, `facturitas estado`.
 
 **Web UI** (prioridad: que la entienda Miguel)
 - Primer arranque: asistente en pasos con capturas/explicaciones de cada pantalla de ARCA: (1) generar clave y CSR con un botón, (2) subir el CSR en "Administración de Certificados Digitales" y pegar o subir el `.crt`, (3) asociar el servicio de facturación electrónica en "Administrador de Relaciones", (4) crear el punto de venta Web Services, (5) emisión de prueba en homologación. Validar cada paso contra ARCA cuando se pueda (ej. `FEParamGetPtosVenta`).
@@ -119,6 +119,15 @@ No hace falta tener cada SO: se compila en **GitHub Actions** con una matriz `wi
 - **Claude Desktop**: evaluar empaquetar también como bundle de extensión MCP de un clic (verificar el formato vigente en la documentación de Anthropic).
 - Smoke test en CI por SO: ejecutar el binario empaquetado con `--version` y `estado --offline`.
 - Releases automáticos al pushear un tag `v*`, con checksums SHA256.
+
+**Empaquetado: lo aprendido (spike, Windows, PyInstaller 6 `--onedir`)**
+- Build: `pwsh packaging/build.ps1` (PyInstaller con `packaging/facturitas.spec`, smoke test e instalador Inno Setup). El CI (`empaquetado-windows`) lo corre en cada push; `release.yml` publica al pushear un tag `v*` (el tag tiene que coincidir con `__version__`).
+- `mcp` y `reportlab` hay que incluirlos enteros (`collect_all`): `mcp` importa módulos dinámicamente y `reportlab` carga datos/fuentes por ruta. `facturitas` se incluye con `collect_submodules`. Con eso: `cryptography`, `httpx` (incluido el contexto TLS propio) y `qrcode` funcionan sin tocar nada más.
+- No hay WSDL que embeber: el cliente de ARCA arma los XML a mano (decisión de arquitectura vigente).
+- Verificado: el `.exe` corre con un PATH sin Python, emite una Factura C en homologación con su PDF/QR y responde por MCP stdio (13 tools). Tamaño de la carpeta ≈ 70 MB.
+- Ojo en desarrollo: si Claude Desktop tiene el MCP andando desde el repo (`uv run --directory ... facturitas mcp`), `facturitas.exe` del `.venv` queda bloqueado y `uv sync`/`uv run` fallan al reconstruirlo («os error 32»). Solución: otro entorno (`UV_PROJECT_ENVIRONMENT=.venv-build`) o cerrar Claude Desktop. El instalado usa su propio `.exe`, así que no tiene este problema.
+- `mcp instalar` detecta si corre empaquetado (`sys.frozen`) y escribe `<carpeta de instalación>\facturitas.exe mcp`; desde el repo escribe `uv run --directory <repo> facturitas mcp`.
+- El instalador (Inno Setup): por usuario (sin admin), agrega la carpeta al PATH del usuario, acceso directo «Facturitas – Configurar», casillas finales (conectar con Claude Desktop / abrir el asistente) y la desinstalación NO borra datos ni certificados. Sin firma de código: SmartScreen avisa (documentado en el README).
 
 ## 8. Estructura del repo sugerida
 
@@ -159,6 +168,7 @@ Orden vigente: M3.5 → spike de empaquetado → M4 → M5 → M6 completo → M
   *Backup:* `facturitas backup [destino]` genera un zip con fecha en el nombre con las bases (homo y prod), la config y los clientes, **sin** la clave privada ni el `.crt`; `facturitas restaurar <zip>` lo restaura (sirve también como export/import entre PCs).
   *Documentación:* README con cómo usar Facturitas en una segunda PC (certificado propio por PC con otro alias, asociado a la misma relación `wsfe`).
   *Acepta:* emitir desde dos PCs con el mismo punto de venta y que ambas terminen con el historial completo, sin duplicados ni pisarse la base.
+- **Instalador v0.1 (Windows)** — *hecho el spike y el instalador; falta probarlo en una PC sin Python*. Ver «Empaquetado: lo aprendido» abajo. Después, v0.2: GUI (M4 replanteado).
 - **Spike de empaquetado** (M6 adelantado, mínimo; antes de M4): PyInstaller `--onedir` de la CLI + MCP actual en Windows, sin instalador.
   *Acepta:* el `.exe` corre `--version`, `estado` y emite una Factura C en homologación desde una carpeta sin Python. Los problemas con reportlab, mcp o cryptography se documentan acá. Se agrega al CI de Windows un job que solo construye y hace el smoke test.
 - **M4 · Web UI + asistente de certificado + botón "Conectar con mi IA"**.

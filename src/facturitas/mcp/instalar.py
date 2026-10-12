@@ -24,9 +24,20 @@ def _raiz_del_repo() -> Path | None:
     return None
 
 
+def empaquetado() -> bool:
+    """¿Corre desde el ejecutable armado con PyInstaller (el instalador)?"""
+    return bool(getattr(sys, "frozen", False))
+
+
 def entrada_mcp() -> dict[str, Any]:
-    """Cómo lanza el cliente de IA el servidor: `uv run --directory <repo> facturitas mcp` si se
-    corre desde el repo, o el ejecutable `facturitas` si está instalado."""
+    """Cómo lanza el cliente de IA el servidor.
+
+    - Instalado con el instalador (.exe empaquetado): el propio ejecutable, `facturitas.exe mcp`.
+    - Desde el repo: `uv run --directory <repo> facturitas mcp`.
+    - Instalado con pip/uv tool: el `facturitas` que esté en el PATH.
+    """
+    if empaquetado():
+        return {"command": str(Path(sys.executable).resolve()), "args": ["mcp"]}
     raiz = _raiz_del_repo()
     if raiz:
         return {

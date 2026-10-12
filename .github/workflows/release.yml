@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync
+      - name: Instalar Inno Setup si falta
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+      - name: La versión del tag tiene que ser la del paquete
+        shell: pwsh
+        run: |
+          $v = (uv run python -c "import facturitas; print(facturitas.__version__)").Trim()
+          if ("v$v" -ne "${{ github.ref_name }}") {
+            throw "El tag ${{ github.ref_name }} no coincide con la versión del paquete ($v)"
+          }
+      - name: Tests
+        run: uv run pytest
+      - name: Construir, smoke test e instalador
+        shell: pwsh
+        run: pwsh packaging/build.ps1
+      - name: Publicar en Releases (con SHA256)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          $setup = "build/installer/Facturitas-Setup-$v.exe"
+          $hash = (Get-Content "$setup.sha256").Split(" ")[0]
+          $notas = @"
+          ## Facturitas $v (Windows)
+
+          Descargá **Facturitas-Setup-$v.exe** y seguí la guía «Instalar en 5 minutos» del README.
+          Windows SmartScreen va a avisar porque la app todavía no está firmada: *Más información → Ejecutar de todas formas*.
+
+          **SHA256** de ``Facturitas-Setup-$v.exe``:
+          ``$hash``
+          "@
+          gh release create "${{ github.ref_name }}" $setup "$setup.sha256" --title "Facturitas $v" --notes "$notas"
