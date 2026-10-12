@@ -180,7 +180,7 @@ def test_metadata_del_pdf(comprobante: Comprobante) -> None:
 
 
 def test_el_qr_sigue_estrictamente_la_especificacion_y_no_lleva_items() -> None:
-    """RG 4892: solo estos campos. El detalle de ítems vive en el PDF y en el preview, no en el QR."""
+    """RG 4892: solo estos campos. Los ítems viven en el PDF y el preview, no en el QR."""
     import base64
     import inspect
     import json
