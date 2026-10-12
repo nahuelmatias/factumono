@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block titulo %}Facturitas · Cliente{% endblock %}
+{% block contenido %}
+<h1>{{ "Editar cliente" if c else "Nuevo cliente" }}</h1>
+<form class="tarjeta" method="post" action="/clientes/guardar">
+  {% if c %}<input type="hidden" name="editando" value="1"><input type="hidden" name="alias" value="{{ c.alias }}">{% endif %}
+  <label for="nombre">Nombre o razón social</label>
+  <input id="nombre" name="nombre" value="{{ c.nombre if c }}" required>
+  {% if not c %}
+  <label for="alias">Nombre corto (para encontrarlo rápido)</label>
+  <input id="alias" name="alias" placeholder="acciona">
+  {% endif %}
+  <div class="dos">
+    <div><label for="doc">CUIT o DNI</label>
+      <input id="doc" name="documento" value="{{ c.doc_nro if c }}" inputmode="numeric" required></div>
+    <div><label for="cond">Condición frente al IVA</label>
+      <select id="cond" name="condicion_iva">
+        {% for x in condiciones %}<option {{ 'selected' if c and c.condicion_iva == x }}>{{ x }}</option>{% endfor %}
+      </select></div>
+  </div>
+  <label for="dom">Domicilio (opcional)</label>
+  <input id="dom" name="domicilio" value="{{ c.domicilio if c }}">
+  <label for="mail">Email (opcional)</label>
+  <input id="mail" name="email" type="email" value="{{ c.email if c }}">
+  <h2>Lo que le facturás siempre</h2>
+  <label for="desc">Detalle habitual</label>
+  <input id="desc" name="descripcion" value="{{ c.descripcion if c }}" placeholder="Servicios de consultoría">
+  <div class="dos">
+    <div><label for="un">Unidad</label><input id="un" name="unidad" value="{{ c.unidad if c else 'otras unidades' }}"></div>
+    <div><label for="vto">Vence a los (días)</label><input id="vto" name="vto_dias" type="number" min="0" value="{{ c.vto_dias if c else 4 }}"></div>
+  </div>
+  <label class="casilla"><input type="radio" name="concepto" value="servicios" {{ 'checked' if not c or c.concepto == 'servicios' }}> Servicios</label>
+  <label class="casilla"><input type="radio" name="concepto" value="productos" {{ 'checked' if c and c.concepto == 'productos' }}> Productos</label>
+  <div class="acciones"><button type="submit">Guardar</button> <a class="boton suave" href="/clientes">Cancelar</a></div>
+</form>
+{% if c %}
+<form method="post" action="/clientes/{{ c.alias }}/borrar" class="tarjeta">
+  <p class="suave">Borrar un cliente no toca las facturas que ya le hiciste.</p>
+  <button class="peligro" type="submit">Borrar este cliente</button>
+</form>
+{% endif %}
+{% endblock %}

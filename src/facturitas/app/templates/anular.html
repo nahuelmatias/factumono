@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block titulo %}Facturitas · Anular factura{% endblock %}
+{% block contenido %}
+<h1>Anular una factura</h1>
+<div class="tarjeta">
+  <p>Vas a anular por completo la factura de <strong>{{ r.receptor_nombre }}</strong> por <strong>{{ pesos(r.importe) }}</strong>
+     (Nro. {{ "%05d" % r.punto_venta }}-{{ "%08d" % r.numero }}).</p>
+  <p class="suave">En Argentina una factura no se borra: se anula emitiendo una <strong>nota de crédito</strong> que la compensa.</p>
+  <form hx-post="/facturas/{{ r.id }}/anular/preparar" hx-target="#resultado" hx-indicator="#resultado">
+    <label for="motivo">¿Por qué la anulás?</label>
+    <input id="motivo" name="motivo" placeholder="Error de facturación" required>
+    <div class="acciones"><button type="submit">Ver la nota de crédito</button> <a class="boton suave" href="/facturas">Volver</a></div>
+  </form>
+</div>
+<div id="resultado"></div>
+{% endblock %}

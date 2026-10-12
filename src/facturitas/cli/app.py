@@ -22,7 +22,12 @@ from facturitas.arca.errors import ArcaError, traducir_error_red
 from facturitas.contexto import Contexto, construir
 from facturitas.core import armado, money, service
 from facturitas.core import cuit as cuit_mod
-from facturitas.core.diagnostico import Diagnostico, diagnosticar, esta_dado_de_baja
+from facturitas.core.diagnostico import (
+    Diagnostico,
+    diagnosticar,
+    esta_dado_de_baja,
+    problemas_para_activar_produccion,
+)
 from facturitas.core.fechas import mostrar as fecha_ar
 from facturitas.core.models import (
     FACTURA_C,
@@ -285,6 +290,7 @@ def init(
             aviso_duplicados=aviso_duplicados
             if aviso_duplicados is not None
             else (previo.aviso_duplicados if previo else True),
+            categoria_monotributo=previo.categoria_monotributo if previo else "",
         )
         perfil.cbte_tipo_default  # noqa: B018 - valida que el tipo de emisor esté soportado
         cfg.credenciales[nombre] = Credencial(
@@ -1084,6 +1090,30 @@ def configurar(
     _ejecutar(run)
 
 
+@app.command("app")
+def abrir_app(
+    navegador: Annotated[
+        bool, typer.Option("--navegador", help="La abre en el navegador en vez de una ventana.")
+    ] = False,
+    probar: Annotated[
+        bool, typer.Option("--probar", help="Autochequeo sin ventana (para el smoke test).")
+    ] = False,
+) -> None:
+    """Abre la interfaz gráfica de Facturitas (ventana propia o navegador)."""
+
+    def run() -> None:
+        from facturitas.app.ventana import lanzar
+        from facturitas.app.ventana import probar as autochequeo
+
+        if probar:
+            typer.echo(autochequeo())
+            return
+
+        lanzar(navegador=navegador, avisar=typer.echo)
+
+    _ejecutar(run)
+
+
 @app.command()
 def backup(
     destino: Annotated[
@@ -1160,19 +1190,13 @@ def _activar_ambiente(nombre: str, perfil: str | None, *, yes: bool) -> None:
     if destino.es_produccion:
         ctx = construir(perfil, "prod")  # sin banner: todavía no es el ambiente activo
         typer.echo("Chequeando producción antes de activarla...")
-        d = diagnosticar(ctx)
+        d, problemas = problemas_para_activar_produccion(ctx)
         if d.dummy:
             typer.echo(f"  FEDummy: {'OK' if d.dummy_ok else d.dummy}")
         if d.ticket_vence:
             typer.echo("  Autenticación: OK")
         if d.pvs:
             _mostrar_puntos_de_venta(d)
-        problemas = list(d.problemas)
-        if not _homologacion_probada(ctx):
-            problemas.append(
-                "Antes de producción hace falta al menos una emisión de prueba autorizada en "
-                "homologación para este CUIT (`facturitas emitir`)."
-            )
         if problemas:
             for pr in problemas:
                 typer.secho(f"✗ {pr}", fg=typer.colors.RED)
@@ -1186,10 +1210,6 @@ def _activar_ambiente(nombre: str, perfil: str | None, *, yes: bool) -> None:
     config.guardar(cfg)
     _banner_prod(destino.nombre)
     typer.secho(f"✓ Ambiente activo: {destino.etiqueta}.", fg=typer.colors.GREEN)
-
-
-def _homologacion_probada(ctx: Contexto) -> bool:
-    return Historial(config.ruta_historial("homo")).hay_autorizados(ctx.perfil.cuit, "homo")
 
 
 @ambiente_app.callback()

@@ -1,0 +1,17 @@
+<section class="tarjeta">
+  <div class="ok"><strong>🎉 {{ e.titulo }} {{ e.numero }} autorizada</strong>
+    {% if e.es_homologacion %}<br>(era de prueba: no tiene validez fiscal){% endif %}
+    {% if e.reutilizado %}<br>Ya estaba emitida: no se emitió otra.{% endif %}</div>
+  <p>{{ e.receptor }} · <strong>{{ e.importe }}</strong></p>
+  <p class="suave">CAE {{ e.cae }} (vence {{ e.cae_vto }})</p>
+  {% for o in e.observaciones %}<div class="aviso">{{ o }}</div>{% endfor %}
+  {% if e.aviso_pdf %}<div class="aviso">{{ e.aviso_pdf }}</div>{% endif %}
+  <div class="acciones">
+    {% if e.pdf %}<a class="boton" href="/facturas/{{ e.registro.id }}/pdf" target="_blank" rel="noopener">Ver el PDF</a>
+    <button class="suave" hx-post="/facturas/{{ e.registro.id }}/carpeta" hx-target="#carpeta-res">Abrir la carpeta</button>{% endif %}
+    {% if mailto %}<a class="boton suave" href="{{ mailto }}">Mandar por mail</a>{% endif %}
+    <a class="boton suave" href="/nueva">Hacer otra</a>
+  </div>
+  <div id="carpeta-res"></div>
+  {% if mailto %}<small>Se abre tu programa de mail; adjuntá el PDF desde la carpeta.</small>{% endif %}
+</section>

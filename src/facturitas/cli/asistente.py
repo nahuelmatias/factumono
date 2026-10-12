@@ -132,6 +132,50 @@ def validar_certificado(crt: Path, key: Path) -> x509.Certificate:
     return cert
 
 
+def guardar_configuracion(av: Avance) -> None:
+    """Escribe credencial y perfil en la config (lo usan el asistente de consola y el de la GUI)."""
+    cfg = config.cargar()
+    previo = cfg.perfiles.get(av.perfil)
+    if av.ambiente == "homo":
+        inicio = date.fromisoformat(av.inicio_actividades) if av.inicio_actividades else None
+        base = Perfil(
+            cuit=av.cuit,
+            razon_social=av.razon_social,
+            condicion_iva=av.condicion_iva,
+            domicilio=av.domicilio,
+            credencial=av.perfil,
+            iibb=av.iibb,
+            inicio_actividades=inicio,
+            punto_venta=av.punto_venta,
+            nombre_fantasia=av.nombre_fantasia,
+        )
+        if previo:
+            base = replace(
+                base,
+                credencial_prod=previo.credencial_prod,
+                punto_venta_prod=previo.punto_venta_prod,
+                aviso_duplicados=previo.aviso_duplicados,
+                categoria_monotributo=previo.categoria_monotributo,
+            )
+        base.cbte_tipo_default  # noqa: B018 - valida que el tipo de emisor esté soportado
+        cfg.credenciales[av.perfil] = Credencial(
+            cuit=av.cuit, cert=av.crt, key=av.key, ambiente="homo"
+        )
+        cfg.perfiles[av.perfil] = base
+        if not previo and len(cfg.perfiles) == 1:
+            cfg.perfil_default = av.perfil
+    else:
+        assert previo is not None, "producción necesita un perfil"
+        nombre_cred = f"{av.perfil}-prod"
+        cfg.credenciales[nombre_cred] = Credencial(
+            cuit=av.cuit, cert=av.crt, key=av.key, ambiente="prod"
+        )
+        cfg.perfiles[av.perfil] = replace(
+            previo, credencial_prod=nombre_cred, punto_venta_prod=av.punto_venta
+        )
+    config.guardar(cfg)
+
+
 class Asistente:
     def __init__(
         self,
@@ -384,44 +428,7 @@ class Asistente:
             if av.punto_venta is None:
                 io.mostrar("Poné el número del punto de venta web services que creaste en ARCA.")
                 av.punto_venta = int(self._numero("Punto de venta de producción", None))
-        previo = cfg.perfiles.get(av.perfil)
-        if av.ambiente == "homo":
-            inicio = date.fromisoformat(av.inicio_actividades) if av.inicio_actividades else None
-            base = Perfil(
-                cuit=av.cuit,
-                razon_social=av.razon_social,
-                condicion_iva=av.condicion_iva,
-                domicilio=av.domicilio,
-                credencial=av.perfil,
-                iibb=av.iibb,
-                inicio_actividades=inicio,
-                punto_venta=av.punto_venta,
-                nombre_fantasia=av.nombre_fantasia,
-            )
-            if previo:
-                base = replace(
-                    base,
-                    credencial_prod=previo.credencial_prod,
-                    punto_venta_prod=previo.punto_venta_prod,
-                    aviso_duplicados=previo.aviso_duplicados,
-                )
-            base.cbte_tipo_default  # noqa: B018 - valida que el tipo de emisor esté soportado
-            cfg.credenciales[av.perfil] = Credencial(
-                cuit=av.cuit, cert=av.crt, key=av.key, ambiente="homo"
-            )
-            cfg.perfiles[av.perfil] = base
-            if not previo and len(cfg.perfiles) == 1:
-                cfg.perfil_default = av.perfil
-        else:
-            assert previo is not None, "producción necesita un perfil"
-            nombre_cred = f"{av.perfil}-prod"
-            cfg.credenciales[nombre_cred] = Credencial(
-                cuit=av.cuit, cert=av.crt, key=av.key, ambiente="prod"
-            )
-            cfg.perfiles[av.perfil] = replace(
-                previo, credencial_prod=nombre_cred, punto_venta_prod=av.punto_venta
-            )
-        config.guardar(cfg)
+        guardar_configuracion(av)
         io.mostrar(f"✓ Configuración guardada ({config.ruta_config()}).")
         if av.ambiente == "prod":
             io.mostrar("  Producción NO queda activa todavía: eso lo hacés vos con")

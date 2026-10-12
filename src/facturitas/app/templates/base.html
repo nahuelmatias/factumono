@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Facturitas{% endblock %}</title>
+  <link rel="icon" type="image/png" href="/static/icono.png">
+  <link rel="stylesheet" href="/static/estilos.css">
+  <script src="/static/htmx.min.js"></script>
+</head>
+<body>
+  <div class="ambiente {{ 'prod' if es_produccion else 'homo' }}" role="status">{{ banner }}</div>
+  <header class="barra">
+    <a class="marca" href="/"><img src="/static/icono.png" alt="">Facturitas</a>
+    <nav class="menu" aria-label="Secciones">
+      <a href="/" class="{{ 'activo' if seccion == 'inicio' }}">Inicio</a>
+      <a href="/nueva" class="{{ 'activo' if seccion == 'nueva' }}">Nueva factura</a>
+      <a href="/facturas" class="{{ 'activo' if seccion == 'facturas' }}">Mis facturas</a>
+      <a href="/clientes" class="{{ 'activo' if seccion == 'clientes' }}">Clientes</a>
+      <a href="/ia" class="{{ 'activo' if seccion == 'ia' }}">Mi IA</a>
+      <a href="/ajustes" class="{{ 'activo' if seccion == 'ajustes' }}">Ajustes</a>
+    </nav>
+  </header>
+  <main class="contenedor">
+    {% block contenido %}{% endblock %}
+    <p class="pie">Facturitas {{ version }} · {{ lema }} · <a href="/acerca">Acerca de</a></p>
+  </main>
+</body>
+</html>

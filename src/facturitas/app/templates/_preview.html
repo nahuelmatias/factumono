@@ -1,0 +1,36 @@
+<section class="tarjeta" aria-label="Vista previa del comprobante">
+  <h2 style="margin-top:0">{{ v.titulo }} <small>· Nro. {{ v.numero }} (estimado)</small></h2>
+  <p><strong>{{ v.receptor }}</strong> — {{ v.receptor_doc }} — {{ v.condicion_iva }}</p>
+  <p class="suave">Emite: {{ v.emisor }} · Fecha: {{ v.fecha }}
+    {% if v.periodo %}· Período: {{ v.periodo }}{% endif %}
+    {% if v.vto_pago %}· Vence: {{ v.vto_pago }}{% endif %}</p>
+  {% if v.anula %}<div class="aviso">Anula la <strong>{{ v.anula }}</strong>. Motivo: {{ v.motivo }}</div>{% endif %}
+  <table>
+    <thead><tr><th>Cant.</th><th>Unidad</th><th>Detalle</th><th class="der">Precio</th><th class="der">Subtotal</th></tr></thead>
+    <tbody>
+    {% for i in v.items %}
+      <tr><td>{{ i.cantidad }}</td><td>{{ i.unidad }}</td><td>{{ i.descripcion }}</td><td class="der">{{ i.unitario }}</td><td class="der">{{ i.subtotal }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="importe" style="text-align:right">Total: {{ v.total }}</p>
+  <small>El detalle se imprime en el PDF; ARCA recibe solo el total (el QR sigue la especificación de ARCA, sin ítems).</small>
+  {% for i in v.info %}<div class="info">ℹ️ {{ i }}</div>{% endfor %}
+  {% for a in v.avisos %}<div class="aviso">⚠️ {{ a }}</div>{% endfor %}
+
+  <form hx-post="/nueva/emitir" hx-target="#resultado" hx-indicator="#resultado">
+    <input type="hidden" name="borrador_id" value="{{ v.borrador_id }}">
+    {% if v.requiere_extra %}
+      <label class="casilla"><input type="checkbox" name="confirmo_anulada" value="1"> Sí, quiero anularla otra vez</label>
+    {% endif %}
+    <div class="acciones">
+      {% if v.es_produccion %}
+        <button type="submit" class="grande peligro">Emitir con validez fiscal</button>
+      {% else %}
+        <button type="submit" class="grande">Emitir (prueba)</button>
+      {% endif %}
+      <a class="boton suave" href="/nueva">Cancelar</a>
+    </div>
+    <small>Este borrador vence a las {{ v.vence }}.</small>
+  </form>
+</section>

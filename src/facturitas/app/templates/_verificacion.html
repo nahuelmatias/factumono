@@ -1,0 +1,10 @@
+{% include "_estado.html" %}
+{% if listo %}
+  <div class="ok"><strong>🎉 ¡Todo listo!</strong>
+    {% if ambiente == "homo" %}Ya podés hacer facturas de prueba. Cuando quieras pasar a producción, volvé al asistente y elegí «Producción».
+    {% else %}Producción quedó configurada pero <strong>todavía no está activa</strong>: activala en Ajustes cuando quieras.{% endif %}</div>
+  <div class="acciones"><a class="boton grande" href="/">Ir al inicio</a></div>
+{% else %}
+  <div class="aviso">Algo no está en orden. Revisá en ARCA que el alias esté asociado al servicio <code>wsfe</code> y volvé a probar.</div>
+  <div class="acciones"><button class="suave" hx-post="/asistente/verificar" hx-vals='{"ambiente": "{{ ambiente }}"}' hx-target="#verificacion">Probar de nuevo</button></div>
+{% endif %}

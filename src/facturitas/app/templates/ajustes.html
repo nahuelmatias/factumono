@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block titulo %}Facturitas · Ajustes{% endblock %}
+{% block contenido %}
+<h1>Ajustes</h1>
+
+<section class="tarjeta">
+  <h2 style="margin-top:0">Ambiente</h2>
+  <p>Ahora estás en <strong>{{ "PRODUCCIÓN (facturas reales)" if a.ambiente == "prod" else "HOMOLOGACIÓN (pruebas)" }}</strong>.</p>
+  {% if a.ambiente == "prod" %}
+    <form hx-post="/ajustes/ambiente" hx-target="#amb-res">
+      <input type="hidden" name="destino" value="homo">
+      <button class="suave" type="submit">Volver al modo pruebas</button>
+    </form>
+  {% elif a.prod_configurado %}
+    <div class="aviso">Antes de activar producción reviso que todo esté en orden con ARCA. Desde ese momento <strong>cada factura tiene validez fiscal</strong>.</div>
+    <form hx-post="/ajustes/ambiente" hx-target="#amb-res" hx-indicator="#amb-res">
+      <input type="hidden" name="destino" value="prod">
+      <button class="peligro" type="submit">Activar producción</button>
+    </form>
+  {% else %}
+    <p class="suave">Producción todavía no está configurada. <a href="/asistente?ambiente=prod">Configurarla ahora</a>.</p>
+  {% endif %}
+  <div id="amb-res"></div>
+</section>
+
+<form class="tarjeta" hx-post="/ajustes" hx-target="#aj-res">
+  <h2 style="margin-top:0">Tus preferencias</h2>
+  <label for="carpeta">Carpeta donde se guardan los PDF</label>
+  <input id="carpeta" name="carpeta_pdf" value="{{ a.carpeta_pdf }}">
+  {% if a.monotributista %}
+  <label for="cat">Tu categoría de monotributo</label>
+  <select id="cat" name="categoria">
+    <option value="">Sin elegir</option>
+    {% for c in a.categorias %}<option value="{{ c }}" {{ 'selected' if a.categoria == c }}>{{ c }}</option>{% endfor %}
+  </select>
+  <small>La uso para mostrarte cuánto llevás facturado contra el tope.</small>
+  {% endif %}
+  <label class="casilla"><input type="checkbox" name="aviso_duplicados" value="1" {{ 'checked' if a.aviso_duplicados }}> Avisarme si una factura se parece a una que ya hice</label>
+  <div class="acciones"><button type="submit">Guardar</button></div>
+  <div id="aj-res"></div>
+</form>
+
+<section class="tarjeta">
+  <h2 style="margin-top:0">Copia de seguridad</h2>
+  <p>Guarda tu historial y tus clientes en un archivo. <strong>No incluye tu clave privada ni tu certificado</strong>: esos guardalos aparte.</p>
+  <button class="suave" hx-post="/ajustes/backup" hx-target="#bk-res" hx-indicator="#bk-res">Hacer una copia ahora</button>
+  <div id="bk-res"></div>
+</section>
+{% endblock %}

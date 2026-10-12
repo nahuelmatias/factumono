@@ -1,10 +1,10 @@
 ; Instalador de Facturitas para Windows (Inno Setup 6).
-;   iscc /DAppVersion=0.1.0 packaging\facturitas.iss
+;   iscc /DAppVersion=0.2.0 packaging\facturitas.iss
 ; Instala por usuario (sin admin) en %LOCALAPPDATA%\Programs\Facturitas, agrega la carpeta al PATH
 ; del usuario y NO toca los datos (historial, config, certificados) al desinstalar.
 
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.2.0"
 #endif
 
 [Setup]
@@ -24,18 +24,25 @@ SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 ChangesEnvironment=yes
-UninstallDisplayIcon={app}\facturitas.exe
+SetupIconFile=facturitas.ico
+UninstallDisplayIcon={app}\facturitas-gui.exe
 LicenseFile=..\LICENSE
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
+[Tasks]
+Name: "desktopicon"; Description: "Crear un acceso directo en el escritorio"; GroupDescription: "Accesos directos:"
+
 [Files]
 Source: "..\build\dist\facturitas\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-; Abre una consola que se queda abierta (/k) con el asistente de configuración.
-Name: "{autoprograms}\Facturitas – Configurar"; Filename: "{cmd}"; Parameters: "/k """"{app}\facturitas.exe"" init"""; WorkingDir: "{userdocs}"; Comment: "Asistente de configuración de Facturitas"
+; La interfaz gráfica (sin consola) es lo principal. La consola sigue disponible.
+Name: "{autoprograms}\Facturitas"; Filename: "{app}\facturitas-gui.exe"; WorkingDir: "{userdocs}"; Comment: "Facturación electrónica de ARCA"
+Name: "{autodesktop}\Facturitas"; Filename: "{app}\facturitas-gui.exe"; WorkingDir: "{userdocs}"; Tasks: desktopicon
+; Consola que se queda abierta (/k) con el asistente de configuración en texto.
+Name: "{autoprograms}\Facturitas – Configurar (consola)"; Filename: "{cmd}"; Parameters: "/k """"{app}\facturitas.exe"" init"""; WorkingDir: "{userdocs}"; IconFilename: "{app}\facturitas.exe"; Comment: "Asistente de configuración en la terminal"
 
 [Registry]
 ; Agrega la carpeta de instalación al PATH del usuario (si no estaba).
@@ -44,7 +51,8 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; Value
 [Run]
 ; Casillas finales. «Conectar con Claude Desktop» usa el .exe instalado (no uv).
 Filename: "{cmd}"; Parameters: "/c """"{app}\facturitas.exe"" mcp instalar & pause"""; Description: "Conectar con Claude Desktop"; Flags: postinstall skipifsilent
-Filename: "{cmd}"; Parameters: "/k """"{app}\facturitas.exe"" init"""; Description: "Abrir el asistente de configuración"; Flags: postinstall skipifsilent
+Filename: "{app}\facturitas-gui.exe"; Description: "Abrir Facturitas"; Flags: postinstall nowait skipifsilent
+Filename: "{cmd}"; Parameters: "/k """"{app}\facturitas.exe"" init"""; Description: "Configurar desde la terminal (en vez de la ventana)"; Flags: postinstall skipifsilent unchecked
 
 [Code]
 function NeedsAddPath(Param: string): Boolean;

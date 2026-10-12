@@ -177,3 +177,25 @@ def test_metadata_del_pdf(comprobante: Comprobante) -> None:
     assert meta is not None
     assert meta.author == "EMISOR FICTICIO"
     assert meta.creator == f"Facturitas {__version__}" == meta.producer
+
+
+def test_el_qr_sigue_estrictamente_la_especificacion_y_no_lleva_items() -> None:
+    """RG 4892: solo estos campos. El detalle de ítems vive en el PDF y en el preview, no en el QR."""
+    import base64
+    import inspect
+    import json
+    from datetime import date
+    from decimal import Decimal
+
+    from facturitas.arca import qr
+
+    url = qr.url_qr(
+        fecha=date(2026, 10, 12), cuit="20000000001", punto_venta=2, cbte_tipo=11, numero=1,
+        importe=Decimal("1234.56"), doc_tipo=80, doc_nro=30000000007, cae="70000000000001",
+    )  # fmt: skip
+    datos = json.loads(base64.b64decode(url.removeprefix(qr.URL_QR)))
+    assert set(datos) == {
+        "ver", "fecha", "cuit", "ptoVta", "tipoCmp", "nroCmp", "importe", "moneda", "ctz",
+        "tipoDocRec", "nroDocRec", "tipoCodAut", "codAut",
+    }  # fmt: skip
+    assert "items" not in inspect.signature(qr.datos_qr).parameters

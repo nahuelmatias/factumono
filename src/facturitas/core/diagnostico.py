@@ -95,3 +95,22 @@ def diagnosticar(ctx: Contexto) -> Diagnostico:
     d.problemas += problemas
     d.avisos += avisos
     return d
+
+
+def problemas_para_activar_produccion(ctx: Contexto) -> tuple[Diagnostico, list[str]]:
+    """Todo lo que impide activar producción (`ctx` es el contexto de prod).
+
+    Además del chequeo de `estado`, exige al menos una emisión de prueba autorizada en
+    homologación para ese CUIT (CLAUDE.md, sección 5).
+    """
+    from facturitas import config
+    from facturitas.storage.historial import Historial
+
+    d = diagnosticar(ctx)
+    problemas = list(d.problemas)
+    if not Historial(config.ruta_historial("homo")).hay_autorizados(ctx.perfil.cuit, "homo"):
+        problemas.append(
+            "Antes de producción hace falta al menos una emisión de prueba autorizada en "
+            "homologación para este CUIT."
+        )
+    return d, problemas

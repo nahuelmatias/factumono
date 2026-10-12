@@ -1,4 +1,6 @@
-# Facturitas
+# Facturitas 🥐
+
+> **Si sos monotributista, no te vuelvas mono con las facturas 🐒**
 
 Facturación electrónica de ARCA (ex AFIP), **fácil, local y abierta**. Emití comprobantes sin
 entrar al portal: tus claves quedan en tu máquina y el código es MIT.
@@ -8,6 +10,28 @@ entrar al portal: tus claves quedan en tu máquina y el código es MIT.
 > desde una IA (MCP). **Arranca siempre en homologación** (pruebas, sin validez fiscal):
 > producción hay que activarla a mano (ver [Pasar a producción](#pasar-a-producción)).
 > El plan completo está en [CLAUDE.md](CLAUDE.md).
+
+## La interfaz gráfica
+
+Después de instalar, abrí **Facturitas** desde el menú Inicio (o `facturitas app`; con
+`facturitas app --navegador` se abre en el navegador). Es una ventana normal, sin terminal:
+
+- **Primera vez:** un asistente te lleva de cero a facturar (tus datos, tu clave, los trámites en
+  ARCA con enlaces directos, el certificado y la prueba de conexión). Se puede cortar y retomar.
+- **Nueva factura:** elegís el cliente, ponés el importe y el mes, ves cómo queda y recién ahí
+  confirmás. «Repetir la del mes pasado» está a un clic en cada cliente.
+- **Mis facturas:** buscás, abrís el PDF, anulás con una nota de crédito.
+- **Clientes**, **Ajustes** (ambiente, carpeta de PDF, categoría, copia de seguridad) y
+  **Mi IA** (conecta Claude Desktop con un botón).
+- **Barra de tope del monotributo:** cuánto llevás facturado en los últimos 12 meses contra el
+  tope de tu categoría. Los topes están en un archivo de datos
+  (`src/facturitas/data/topes_monotributo.json`) con su fecha de vigencia y fuente (ARCA); para
+  actualizarlos sin esperar una versión nueva, copiá ese archivo a la carpeta de datos de
+  Facturitas como `topes_monotributo.json` y cambiá los valores.
+- El ambiente (🧪 pruebas / ⚠️ PRODUCCIÓN) se ve siempre arriba de todo.
+
+Es la misma web local que usa el resto del programa: escucha solo en `127.0.0.1`, con una cookie
+de sesión que se entrega una sola vez (ninguna otra página del navegador puede usarla).
 
 ## Instalar en 5 minutos (Windows)
 

@@ -66,6 +66,8 @@ class Perfil:
     punto_venta_prod: int | None = None
     # Avisar (solo informativo) cuando un comprobante se parece a uno ya emitido.
     aviso_duplicados: bool = True
+    # Categoría del monotributo (A-K), para la barra de tope de la GUI. Vacío: no se muestra.
+    categoria_monotributo: str = ""
 
     @property
     def cbte_tipo_default(self) -> int:

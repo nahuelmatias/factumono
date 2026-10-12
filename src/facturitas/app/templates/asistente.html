@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block titulo %}Facturitas · Configuración{% endblock %}
+{% block contenido %}
+{% set av = w.avance %}
+{% set paso = w.paso %}
+<h1>Configuremos Facturitas</h1>
+<p class="suave">Ambiente: <strong>{{ "Producción (comprobantes reales)" if w.ambiente == "prod" else "Homologación (pruebas)" }}</strong>.
+  Podés cerrar esta ventana en cualquier momento: el avance queda guardado.</p>
+
+<ol class="pasos">
+  {% set nombres = ["Tus datos", "Clave", "Trámites en ARCA", "Certificado", "Guardar", "Probar"] %}
+  {% for n in nombres %}
+    {% set i = loop.index %}
+    <li class="{{ 'hecho' if paso >= i else ('actual' if paso + 1 == i else '') }}">{{ i }}. {{ n }}</li>
+  {% endfor %}
+</ol>
+
+{% if paso < 2 %}
+<section class="tarjeta">
+  <h2 style="margin-top:0">Paso 1: tus datos</h2>
+  <form method="post" action="/asistente/datos">
+    <input type="hidden" name="ambiente" value="{{ w.ambiente }}">
+    {% if w.ambiente == "prod" %}
+      <p>Usamos los datos de tu perfil. Solo falta el alias del certificado de producción.</p>
+    {% else %}
+      <label for="cuit">Tu CUIT</label>
+      <input id="cuit" name="cuit" value="{{ av.cuit }}" inputmode="numeric" placeholder="20-12345678-9" required>
+      <label for="razon">Tu nombre o razón social (como figura en ARCA)</label>
+      <input id="razon" name="razon_social" value="{{ av.razon_social }}" required>
+      <label for="cond">Tu condición frente al IVA</label>
+      <select id="cond" name="condicion">
+        {% for c in condiciones %}<option value="{{ c }}" {{ 'selected' if av.condicion_iva == c }}>{{ "Monotributista" if "Monotributo" in c else c }}</option>{% endfor %}
+      </select>
+      <small>Responsable Inscripto (Factura A/B) todavía no está disponible.</small>
+      <label for="dom">Tu domicilio comercial (sale en la factura)</label>
+      <input id="dom" name="domicilio" value="{{ av.domicilio }}" required>
+      <div class="dos">
+        <div><label for="iibb">Ingresos Brutos (opcional)</label><input id="iibb" name="iibb" value="{{ av.iibb }}" placeholder="Exento"></div>
+        <div><label for="ini">Inicio de actividades (opcional)</label><input id="ini" name="inicio" placeholder="DD/MM/AAAA"></div>
+      </div>
+      <label for="fan">Nombre de fantasía (opcional)</label>
+      <input id="fan" name="nombre_fantasia" value="{{ av.nombre_fantasia }}">
+    {% endif %}
+    <label for="alias">Alias del certificado</label>
+    <input id="alias" name="alias" value="{{ av.alias or ('facturitas-prod' if w.ambiente == 'prod' else 'facturitas-homo') }}">
+    <small>Es el nombre con el que vas a ver el certificado en ARCA. Si no sabés, dejá el que está.</small>
+    <div class="acciones"><button type="submit">Seguir</button></div>
+  </form>
+</section>
+
+{% elif paso == 2 %}
+<section class="tarjeta">
+  <h2 style="margin-top:0">Paso 3: los trámites en ARCA</h2>
+  <div class="ok">✅ Ya generé tu clave privada (queda solo en esta compu) y tu pedido de certificado. Ahora hay que llevar ese pedido a ARCA.</div>
+  <ol class="instrucciones">
+    {% if w.ambiente == "homo" %}
+    <li>Entrá a <a href="{{ url_arca }}" target="_blank" rel="noopener">ARCA con tu CUIT y clave fiscal</a>.</li>
+    <li>Abrí el servicio <strong>«WSASS - Autogestión Certificados Homologación»</strong> (si no te aparece, agregalo en «Administrador de Relaciones de Clave Fiscal»). <a href="{{ url_wsass }}" target="_blank" rel="noopener">Abrir WSASS</a></li>
+    <li>Elegí <strong>«Nuevo certificado»</strong>, poné el alias <code>{{ av.alias }}</code> y pegá el pedido de certificado de abajo.</li>
+    <li>Descargá el certificado (<code>.crt</code>) que te devuelve ARCA.</li>
+    <li>En el mismo sitio, <strong>«Crear autorización a servicio»</strong>: tu CUIT, servicio <code>wsfe</code> (Facturación Electrónica) y el alias <code>{{ av.alias }}</code>.</li>
+    {% else %}
+    <li>Entrá a <a href="{{ url_arca }}" target="_blank" rel="noopener">ARCA con tu CUIT y clave fiscal</a>.</li>
+    <li>Abrí <strong>«Administración de Certificados Digitales»</strong> (la de producción, no WSASS).</li>
+    <li>Agregá un alias nuevo (<code>{{ av.alias }}</code>) y pegá el pedido de certificado de abajo.</li>
+    <li>Descargá el certificado (<code>.crt</code>).</li>
+    <li>Abrí <strong>«Administrador de Relaciones de Clave Fiscal»</strong> → Nueva relación → servicio <strong>«Facturación Electrónica» (wsfe)</strong> → asocialo al alias <code>{{ av.alias }}</code>.</li>
+    <li>Abrí <strong>«Administración de puntos de venta y domicilios»</strong> → Agregar punto de venta de tipo <strong>«Factura Electrónica - Monotributo - Web Services»</strong> (los de «Comprobantes en línea» no sirven). Anotá el número.</li>
+    {% endif %}
+  </ol>
+  {% for c in capturas %}<img class="captura" src="/static/pasos/{{ w.ambiente }}/{{ c }}" alt="Captura del paso en ARCA">{% endfor %}
+  <h3>Tu pedido de certificado (CSR)</h3>
+  <pre>{{ w.csr_texto }}</pre>
+  <div class="acciones">
+    <a class="boton suave" href="/asistente/csr?ambiente={{ w.ambiente }}">Descargar el pedido (.csr)</a>
+  </div>
+  <form method="post" action="/asistente/tramites">
+    <input type="hidden" name="ambiente" value="{{ w.ambiente }}">
+    <div class="acciones"><button type="submit">Ya lo hice y tengo el .crt</button></div>
+  </form>
+</section>
+
+{% elif paso == 3 %}
+<section class="tarjeta">
+  <h2 style="margin-top:0">Paso 4: el certificado de ARCA</h2>
+  <p>Subí el archivo <code>.crt</code> que descargaste (o pegá su contenido). Verifico que corresponda a tu clave.</p>
+  <form method="post" action="/asistente/certificado" enctype="multipart/form-data">
+    <input type="hidden" name="ambiente" value="{{ w.ambiente }}">
+    <label for="archivo">Archivo .crt</label>
+    <input id="archivo" type="file" name="archivo" accept=".crt,.pem,.cer">
+    <label for="texto">…o pegá el contenido</label>
+    <textarea id="texto" name="texto" rows="5" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+    <div class="acciones"><button type="submit">Validar certificado</button></div>
+  </form>
+</section>
+
+{% elif paso == 4 %}
+<section class="tarjeta">
+  <h2 style="margin-top:0">Paso 5: guardar</h2>
+  <div class="ok">✅ El certificado es válido y corresponde a tu clave.</div>
+  <form method="post" action="/asistente/guardar">
+    <input type="hidden" name="ambiente" value="{{ w.ambiente }}">
+    <label for="pv">{{ "Número del punto de venta web services que creaste en ARCA" if w.ambiente == "prod" else "Punto de venta (en pruebas sirve cualquiera; usá el 1)" }}</label>
+    <input id="pv" name="punto_venta" type="number" min="1" value="{{ av.punto_venta or (2 if w.ambiente == 'prod' else 1) }}" required>
+    {% if "Monotributo" in av.condicion_iva %}
+    <label for="cat">Tu categoría de monotributo (opcional; te muestro cuánto te falta para el tope)</label>
+    <select id="cat" name="categoria">
+      <option value="">No sé / después</option>
+      {% for c in categorias %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <div class="acciones"><button type="submit">Guardar</button></div>
+  </form>
+</section>
+
+{% else %}
+<section class="tarjeta">
+  <h2 style="margin-top:0">Paso 6: probemos la conexión con ARCA</h2>
+  <form hx-post="/asistente/verificar" hx-target="#verificacion" hx-indicator="#verificacion">
+    <input type="hidden" name="ambiente" value="{{ w.ambiente }}">
+    <div class="acciones"><button type="submit">Probar ahora</button></div>
+  </form>
+  <div id="verificacion"></div>
+</section>
+{% endif %}
+{% endblock %}

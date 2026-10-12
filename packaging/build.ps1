@@ -43,6 +43,21 @@ if ($salida -notmatch [regex]::Escape($exe.Replace("\", "\\")) -and $salida -not
 }
 Write-Host "OK: mcp instalar apunta al .exe"
 
+$salida = & $exe app --probar 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0 -or $salida -notmatch "OK: la interfaz") {
+    throw "app --probar falló ($LASTEXITCODE): $salida"
+}
+Write-Host "OK: la interfaz gráfica empaquetada responde (plantillas, estáticos, seguridad)"
+
+# La ventana propia (sin consola) tiene que abrir y quedarse viva unos segundos.
+$gui = (Resolve-Path "build/dist/facturitas/facturitas-gui.exe").Path
+$proc = Start-Process -FilePath $gui -PassThru
+Start-Sleep -Seconds 10
+$vivo = -not $proc.HasExited
+if ($vivo) { Stop-Process -Id $proc.Id -Force }
+if (-not $vivo) { throw "facturitas-gui.exe se cerró solo (código $($proc.ExitCode))" }
+Write-Host "OK: facturitas-gui.exe abre y se mantiene"
+
 uv run python packaging/smoke_mcp.py $exe
 if ($LASTEXITCODE -ne 0) { throw "El MCP empaquetado no responde" }
 Remove-Item Env:FACTURITAS_HOME

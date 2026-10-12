@@ -1,0 +1,24 @@
+{% if filas %}
+<table>
+  <thead><tr><th>Fecha</th><th>Comprobante</th><th>Cliente</th><th class="der">Importe</th><th></th></tr></thead>
+  <tbody>
+  {% for f in filas %}
+    <tr>
+      <td>{{ f.fecha }}</td>
+      <td>{{ f.numero }}
+        {% if f.homologacion %}<span class="etiqueta">prueba</span>{% endif %}
+        {% if f.anulada %}<span class="etiqueta rojo">anulada</span>{% endif %}
+        {% if f.es_nc %}<span class="etiqueta">nota de crédito</span>{% endif %}</td>
+      <td>{{ f.receptor }}</td>
+      <td class="der">{{ f.importe }}</td>
+      <td>
+        <a href="/facturas/{{ f.id }}/pdf" target="_blank" rel="noopener">PDF</a>
+        {% if not f.es_nc and not f.anulada %} · <a href="/facturas/{{ f.id }}/anular">Anular</a>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="suave">No hay comprobantes para mostrar.</p>
+{% endif %}

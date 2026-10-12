@@ -1,0 +1,125 @@
+/* Facturitas — diseño amable, tipografía grande, sin cara de "sistema contable". */
+:root {
+  --fondo: #fff8ec;
+  --papel: #ffffff;
+  --tinta: #3b2a1a;
+  --suave: #7b6650;
+  --linea: #ecdcc3;
+  --dorado: #e5952c;
+  --dorado-oscuro: #b8690f;
+  --dorado-claro: #fde7bf;
+  --ok: #2f8f4e;
+  --ok-fondo: #e3f5e8;
+  --aviso: #b8690f;
+  --aviso-fondo: #fff0d1;
+  --error: #b3261e;
+  --error-fondo: #fde8e6;
+  --homo: #1f6f8b;
+  --prod: #b3261e;
+  --radio: 16px;
+  --sombra: 0 2px 10px rgba(80, 50, 10, 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #1d1710;
+    --papel: #2a2218;
+    --tinta: #f6ead7;
+    --suave: #c2ad8f;
+    --linea: #43372a;
+    --dorado-claro: #4a3517;
+    --ok-fondo: #1e3a29;
+    --aviso-fondo: #43330f;
+    --error-fondo: #4a2320;
+    --sombra: 0 2px 10px rgba(0, 0, 0, 0.4);
+  }
+}
+* { box-sizing: border-box; }
+html { font-size: 18px; }
+body {
+  margin: 0; background: var(--fondo); color: var(--tinta);
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; line-height: 1.5;
+}
+a { color: var(--dorado-oscuro); }
+h1 { font-size: 1.9rem; margin: 0 0 0.4rem; }
+h2 { font-size: 1.35rem; margin: 1.6rem 0 0.6rem; }
+h3 { font-size: 1.1rem; margin: 1rem 0 0.4rem; }
+p { margin: 0.5rem 0; }
+small, .suave { color: var(--suave); }
+.contenedor { max-width: 980px; margin: 0 auto; padding: 1rem 1.2rem 3rem; }
+
+/* Ambiente: siempre visible */
+.ambiente { padding: 0.55rem 1rem; text-align: center; font-weight: 700; color: #fff; letter-spacing: 0.01em; }
+.ambiente.homo { background: var(--homo); }
+.ambiente.prod { background: var(--prod); }
+
+.barra { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.7rem 1.2rem; background: var(--papel); border-bottom: 1px solid var(--linea); }
+.marca { display: flex; align-items: center; gap: 0.6rem; font-weight: 800; font-size: 1.25rem; color: var(--tinta); text-decoration: none; }
+.marca img { width: 38px; height: 38px; }
+.menu { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-left: auto; }
+.menu a { padding: 0.45rem 0.9rem; border-radius: 999px; text-decoration: none; color: var(--tinta); font-weight: 600; }
+.menu a:hover { background: var(--dorado-claro); }
+.menu a.activo { background: var(--dorado); color: #fff; }
+
+.tarjeta { background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 1.2rem 1.4rem; box-shadow: var(--sombra); margin: 1rem 0; }
+.grilla { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+
+.boton, button {
+  display: inline-block; font: inherit; font-weight: 700; cursor: pointer; text-decoration: none;
+  padding: 0.75rem 1.4rem; border-radius: 999px; border: 2px solid var(--dorado); background: var(--dorado); color: #fff;
+}
+.boton:hover, button:hover { background: var(--dorado-oscuro); border-color: var(--dorado-oscuro); }
+.boton.suave, button.suave { background: transparent; color: var(--dorado-oscuro); }
+.boton.suave:hover, button.suave:hover { background: var(--dorado-claro); }
+.boton.peligro, button.peligro { background: var(--error); border-color: var(--error); }
+.boton.grande { font-size: 1.2rem; padding: 1rem 1.8rem; }
+.acciones { display: flex; gap: 0.7rem; flex-wrap: wrap; margin-top: 1rem; }
+
+label { display: block; font-weight: 700; margin: 1rem 0 0.25rem; }
+input, select, textarea {
+  width: 100%; font: inherit; padding: 0.7rem 0.9rem; border-radius: 12px;
+  border: 2px solid var(--linea); background: var(--papel); color: var(--tinta);
+}
+input:focus, select:focus, textarea:focus { outline: 3px solid var(--dorado-claro); border-color: var(--dorado); }
+input[type="checkbox"], input[type="radio"] { width: auto; margin-right: 0.5rem; }
+label.casilla { font-weight: 600; display: flex; align-items: center; margin: 0.6rem 0; }
+.dos { display: grid; gap: 1rem; grid-template-columns: 1fr 1fr; }
+@media (max-width: 640px) { .dos { grid-template-columns: 1fr; } }
+.importe { font-size: 1.8rem; font-weight: 800; }
+
+.aviso, .ok, .error, .info { border-radius: 12px; padding: 0.8rem 1rem; margin: 0.8rem 0; }
+.aviso { background: var(--aviso-fondo); border-left: 6px solid var(--aviso); }
+.ok { background: var(--ok-fondo); border-left: 6px solid var(--ok); }
+.error { background: var(--error-fondo); border-left: 6px solid var(--error); }
+.info { background: var(--dorado-claro); border-left: 6px solid var(--dorado); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--linea); vertical-align: top; }
+th { color: var(--suave); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
+td.der, th.der { text-align: right; }
+.etiqueta { display: inline-block; font-size: 0.78rem; font-weight: 700; padding: 0.1rem 0.6rem; border-radius: 999px; background: var(--dorado-claro); color: var(--dorado-oscuro); }
+.etiqueta.rojo { background: var(--error-fondo); color: var(--error); }
+
+/* Barra de tope del monotributo */
+.tope .pista { height: 26px; background: var(--dorado-claro); border-radius: 999px; overflow: hidden; margin: 0.6rem 0; }
+.tope .relleno { height: 100%; border-radius: 999px; background: var(--ok); transition: width 0.4s; }
+.tope.atencion .relleno { background: var(--dorado); }
+.tope.peligro .relleno, .tope.excedido .relleno { background: var(--error); }
+.tope .cifras { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.4rem; font-weight: 700; }
+
+/* Pasos del asistente */
+.pasos { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 1rem 0; padding: 0; list-style: none; }
+.pasos li { padding: 0.35rem 0.8rem; border-radius: 999px; background: var(--dorado-claro); color: var(--suave); font-weight: 700; font-size: 0.9rem; }
+.pasos li.hecho { background: var(--ok-fondo); color: var(--ok); }
+.pasos li.actual { background: var(--dorado); color: #fff; }
+ol.instrucciones { padding-left: 1.4rem; }
+ol.instrucciones li { margin: 0.5rem 0; }
+.captura { max-width: 100%; border: 1px solid var(--linea); border-radius: 12px; margin: 0.5rem 0; }
+pre, code { font-family: Consolas, "Cascadia Mono", monospace; }
+pre { background: var(--fondo); border: 1px solid var(--linea); border-radius: 12px; padding: 0.8rem; overflow: auto; font-size: 0.8rem; }
+
+.bienvenida { text-align: center; padding: 2rem 0; }
+.bienvenida img { width: 150px; height: 150px; }
+.bienvenida h1 { font-size: 2.4rem; }
+.lema { font-size: 1.25rem; color: var(--dorado-oscuro); font-weight: 700; }
+.pie { text-align: center; color: var(--suave); font-size: 0.85rem; margin-top: 2rem; }
+.htmx-request { opacity: 0.6; }

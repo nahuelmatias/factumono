@@ -1,0 +1,14 @@
+{% if d.dummy_ok %}<div class="ok">✅ Los servidores de ARCA responden.</div>{% endif %}
+{% if d.ticket_vence %}<div class="ok">✅ Tu certificado funciona (acceso vigente hasta {{ d.ticket_vence.strftime("%d/%m/%Y %H:%M") }}).</div>{% endif %}
+{% if d.pvs %}
+  <p><strong>Puntos de venta habilitados para facturar:</strong></p>
+  <ul>
+  {% for pv in d.pvs %}
+    <li>{{ "%05d" % pv.nro }} — {{ pv.emision_tipo or "sin tipo" }}{% if pv.nro == d.pv_configurado %} <span class="etiqueta">el que usás</span>{% endif %}</li>
+  {% endfor %}
+  </ul>
+{% elif d.ticket_vence and not es_produccion %}
+  <div class="info">En pruebas ARCA no lista puntos de venta: es lo normal y no impide facturar.</div>
+{% endif %}
+{% for a in d.avisos %}<div class="aviso">{{ a }}</div>{% endfor %}
+{% for p in d.problemas %}<div class="error">❌ {{ p }}</div>{% endfor %}

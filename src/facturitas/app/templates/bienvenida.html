@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block titulo %}Bienvenido a Facturitas{% endblock %}
+{% block contenido %}
+<section class="bienvenida">
+  <img src="/static/icono.png" alt="Facturitas: una medialuna">
+  <h1>Facturitas</h1>
+  <p class="lema">{{ lema }}</p>
+  <p>Facturá a ARCA sin entrar al portal. Todo queda en tu compu: tus claves no salen de acá.</p>
+  <div class="acciones" style="justify-content:center">
+    {% if configurado %}
+      <a class="boton grande" href="/">Ir al inicio</a>
+      <a class="boton grande suave" href="/asistente">Volver al asistente</a>
+    {% else %}
+      <a class="boton grande" href="/asistente">Empezar (5 minutos)</a>
+    {% endif %}
+  </div>
+  <p class="suave">Vamos a empezar en <strong>modo pruebas</strong> (homologación): nada de lo que hagas tiene validez fiscal.</p>
+</section>
+{% endblock %}
