@@ -32,7 +32,9 @@ uv run facturitas historial       # todo lo emitido (--buscar texto, --limite N)
 uv run facturitas pdf 4           # genera / reimprime el PDF del comprobante Nro. 4
 uv run facturitas nota-credito 4 --motivo "Error de facturación"   # anula la factura 4
 uv run facturitas reconciliar     # resuelve comprobantes 'inciertos' tras un corte de red
-uv run facturitas recuperar 1 3   # trae de ARCA comprobantes emitidos antes del historial
+uv run facturitas recuperar       # completa el historial con lo que ARCA tiene y falta acá
+uv run facturitas recuperar 1 3   # o un rango concreto
+uv run facturitas backup          # zip con bases y config (sin claves)
 uv run facturitas config --carpeta-pdf "D:\Facturas"              # dónde se guardan los PDF
 ```
 
@@ -213,21 +215,37 @@ uv run facturitas ambiente usar prod                        # recién acá se ac
 
 La primera factura real conviene emitirla vos, mirando el preview completo.
 
-## Usarlo en una segunda PC
+## Backup y segunda PC
 
-> Hoy el historial, los clientes y los PDF viven en cada PC. La sincronización está planificada
-> (hito M3.5 en [CLAUDE.md](CLAUDE.md)); mientras tanto, esto es lo que hay que saber.
+### Backup
+
+```
+uv run facturitas backup [carpeta-o-archivo.zip]   # por defecto, Documentos/Facturitas/_backups
+uv run facturitas restaurar facturitas-backup-AAAAMMDD-HHMMSS.zip [--con-config] [--yes]
+```
+
+El zip (con la fecha en el nombre) trae las bases de homologación y de producción (con el
+historial y los clientes) y la config. **Nunca** trae la clave privada, el `.crt` ni los tickets de
+acceso: esos archivos se guardan aparte. `restaurar` valida el zip, guarda antes una copia de lo
+que había (en `backups-previos` dentro del directorio de datos) y no toca la config salvo que
+pases `--con-config` (la config tiene las rutas del certificado de la PC de origen).
+
+### Usarlo en una segunda PC
 
 - **La numeración no se pisa:** antes de emitir siempre se consulta a ARCA el último número
   autorizado, así que dos PCs con el mismo punto de venta no repiten número.
-- **El historial local queda incompleto:** lo emitido desde la otra PC no aparece acá. Con
-  `facturitas recuperar <desde> <hasta>` se trae de ARCA (solo los totales: ARCA no guarda ítems
-  ni datos del receptor).
+- **El historial se completa solo si querés:** al emitir (y en `estado`) Facturitas compara los
+  números que tiene ARCA con los del historial local. Si faltan, avisa («hay N comprobantes
+  emitidos fuera de esta PC») y te ofrece traerlos. También podés correr
+  `facturitas recuperar` sin argumentos (o `facturitas recuperar 5 8` para un rango). Desde una IA
+  existe la tool `recuperar_comprobantes`, que solo lee de ARCA y no emite. ARCA guarda únicamente
+  los totales: ítems y datos del receptor quedan genéricos.
 - **Certificado propio por PC:** no copies la clave privada de una PC a otra. En la segunda PC
   generá otra clave y otro pedido (CSR), subilo en «Administración de Certificados Digitales» con
   **otro alias** (por ejemplo `facturitas-prod-pc2`) y asocialo a la misma relación de `wsfe`
   en «Administrador de Relaciones de Clave Fiscal». Después, `facturitas init --ambiente prod`.
-- Los clientes guardados hay que cargarlos de nuevo en cada PC (por ahora).
+- **Clientes e historial entre PCs:** por ahora, con `backup` en una y `restaurar` en la otra.
+  La sincronización automática por carpeta compartida (con bloqueo) todavía no existe.
 
 ## Nombre de fantasía
 

@@ -152,7 +152,7 @@ Orden vigente: M3.5 → spike de empaquetado → M4 → M5 → M6 completo → M
   *Acepta:* casos de Matías (servicios con período) y panadería (productos con kg y docena) generan PDF correcto; un corte simulado de red no duplica el comprobante.
 - **M3 · MCP**: tools de la sección 6 con el flujo preparar/confirmar. Instrucciones de conexión para Claude Desktop, Claude Code y Gemini CLI.
   *Acepta:* el prompt de ejemplo de Acciona funciona de punta a punta desde Claude Desktop en homologación.
-- **M3.5 · Historial multi-PC** (antes de M4; *planificado, no implementado*).
+- **M3.5 · Historial multi-PC** (antes de M4). *Hecho:* paso 1 (detección de brecha por número, `recuperar` automático, tool MCP `recuperar_comprobantes`), `backup` y `restaurar` (export/import). *Pendiente:* carpeta sincronizada con bloqueo (paso 2), a decidir si hace falta.
   *Problema:* el historial, los clientes y los PDF viven en cada PC. La numeración no se pisa (siempre se consulta `FECompUltimoAutorizado`), pero el historial local puede quedar incompleto si se emite desde otra PC u otro sistema con el mismo punto de venta.
   *Paso 1 (local):* al iniciar y antes de cada emisión, comparar el último número de ARCA con el último del historial local. Si ARCA tiene más, avisar («hay N comprobantes emitidos fuera de esta PC») y ofrecer `facturitas recuperar` automático para completar el historial con lo que guarda ARCA (ARCA solo guarda totales: ítems y datos del receptor no se recuperan).
   *Paso 2 (sync):* opción de guardar la base y los clientes en una carpeta sincronizada (OneDrive/Drive/Dropbox) con bloqueo para que dos PCs no escriban a la vez, o export/import. **Nunca sincronizar la clave privada.**

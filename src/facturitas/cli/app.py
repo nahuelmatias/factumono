@@ -23,13 +23,11 @@ from facturitas.contexto import Contexto, construir
 from facturitas.core import armado, money, service
 from facturitas.core import cuit as cuit_mod
 from facturitas.core.diagnostico import Diagnostico, diagnosticar, esta_dado_de_baja
-from facturitas.core.fechas import de_arca
 from facturitas.core.fechas import mostrar as fecha_ar
 from facturitas.core.models import (
     FACTURA_C,
     Cliente,
     Comprobante,
-    Concepto,
     Credencial,
     DocTipo,
     Item,
@@ -37,7 +35,16 @@ from facturitas.core.models import (
     Receptor,
 )
 from facturitas.core.preview import texto_preview
+from facturitas.core.sincronia import (
+    DESCRIPCION_RECUPERADO,
+    Brecha,
+    brechas,
+    recuperar_brechas,
+    recuperar_numero,
+    total_faltantes,
+)
 from facturitas.pdf.salida import guardar_pdf
+from facturitas.storage import backup as backup_mod
 from facturitas.storage.historial import AUTORIZADO, Historial, Registro
 
 # Títulos de la ayuda en español (Typer los trae en inglés).
@@ -424,6 +431,8 @@ def estado(
                 "emitir (ARCA acepta cualquier número).",
                 fg=typer.colors.CYAN,
             )
+        if d.ticket_vence:
+            _avisar_brecha(ctx, True)
         for aviso in d.avisos:
             typer.secho(f"⚠ {aviso}", fg=typer.colors.YELLOW)
         for problema in d.problemas:
@@ -739,6 +748,7 @@ def emitir(
                 condicion_venta=condicion_venta,
             )
         c.validar()
+        _avisar_brecha(ctx, yes)
         numero = ctx.wsfe.proximo_numero(pv, FACTURA_C)
         duplicados = ctx.posibles_duplicados(c)
         preview = texto_preview(c, ctx.etiqueta, numero, ctx.aviso_ambiente)
@@ -778,6 +788,7 @@ def nota_credito(
     def run() -> None:
         ctx = _contexto(perfil)
         historial = _historial(ctx)
+        _avisar_brecha(ctx, yes)
         original = _buscar(ctx, numero, pto_vta, tipo)
         previas = historial.notas_de_credito_de(original.id)
         nc = service.nota_de_credito(historial, original, motivo)
@@ -897,7 +908,10 @@ def reconciliar(perfil: PerfilOpt = None) -> None:
 
 @app.command()
 def recuperar(
-    desde: Annotated[int, typer.Argument(help="Primer número a recuperar.")],
+    desde: Annotated[
+        int | None,
+        typer.Argument(help="Primer número a recuperar (sin argumentos: todo lo que falte)."),
+    ] = None,
     hasta: Annotated[
         int | None, typer.Argument(help="Último número (por defecto, el mismo).")
     ] = None,
@@ -906,74 +920,73 @@ def recuperar(
     tipo: Annotated[int | None, typer.Option(help="Tipo (11 = Factura C, 13 = NC C).")] = None,
     descripcion: Annotated[
         str, typer.Option(help="Descripción del ítem (ARCA no guarda el detalle).")
-    ] = "Comprobante recuperado de ARCA (sin detalle de ítems)",
+    ] = DESCRIPCION_RECUPERADO,
     receptor_nombre: Annotated[
         str | None, typer.Option(help="Nombre del receptor (ARCA no lo guarda).")
     ] = None,
 ) -> None:
     """Trae del propio ARCA comprobantes ya emitidos y los registra en el historial.
 
-    Sirve para lo emitido antes de tener historial. ARCA solo guarda los totales: los ítems, el
-    nombre y el domicilio del receptor no se pueden recuperar (se completan con valores genéricos).
+    Sin números, completa automáticamente todo lo que ARCA tiene y este historial no (por ejemplo,
+    lo emitido desde otra PC). ARCA solo guarda los totales: los ítems, el nombre y el domicilio
+    del receptor no se pueden recuperar (se completan con valores genéricos).
     """
 
     def run() -> None:
         ctx = _contexto(perfil)
-        historial = _historial(ctx)
+        if desde is None:
+            bs = brechas(ctx)
+            if not bs:
+                typer.echo("El historial está completo: no falta nada de lo que tiene ARCA.")
+                return
+            _recuperar_y_contar(ctx, bs)
+            return
         pv = _pto_vta(ctx, pto_vta)
         t = tipo or ctx.perfil.cbte_tipo_default
-        condiciones = {c.id: c.descripcion for c in ctx.wsfe.condiciones_iva_receptor("C")}
         for n in range(desde, (hasta or desde) + 1):
             nombre = _nombre_corto(t, pv, n)
-            if historial.por_numero(ctx.perfil.cuit, ctx.ambiente, pv, t, n):
+            if _historial(ctx).por_numero(ctx.perfil.cuit, ctx.ambiente, pv, t, n):
                 typer.echo(f"• {nombre}: ya estaba en el historial.")
                 continue
-            r = ctx.wsfe.consultar(pv, t, n)
-            if r is None or r.resultado != "A":
+            reg = recuperar_numero(
+                ctx, pv, t, n, descripcion=descripcion, receptor_nombre=receptor_nombre
+            )
+            if reg is None:
                 typer.secho(f"✗ {nombre}: ARCA no lo tiene.", fg=typer.colors.RED)
-                continue
-            cond_id = r.condicion_iva_id or 5
-            es_cf = r.doc_tipo == int(DocTipo.CONSUMIDOR_FINAL)
-            c = Comprobante(
-                perfil=ctx.perfil,
-                punto_venta=pv,
-                cbte_tipo=t,
-                concepto=Concepto(r.concepto),
-                receptor=Receptor(
-                    doc_tipo=r.doc_tipo,
-                    doc_nro=r.doc_nro,
-                    nombre=receptor_nombre or ("Consumidor Final" if es_cf else "(sin datos)"),
-                    condicion_iva_id=cond_id,
-                    condicion_iva=condiciones.get(cond_id, ""),
-                ),
-                items=(
-                    Item(
-                        descripcion=descripcion,
-                        cantidad=Decimal(1),
-                        precio_unitario=r.importe_total,
-                        unidad="otras unidades",
-                    ),
-                ),
-                fecha=r.fecha,
-                periodo_desde=r.periodo_desde,
-                periodo_hasta=r.periodo_hasta,
-                vto_pago=r.vto_pago,
-            )
-            reg = historial.crear(
-                perfil=ctx.perfil_nombre,
-                ambiente=ctx.ambiente,
-                c=c,
-                clave=f"recuperado-{ctx.ambiente}-{ctx.perfil.cuit}-{pv}-{t}-{n}",
-                estado=AUTORIZADO,
-                numero=n,
-                recuperado=True,
-            )
-            reg = historial.actualizar(
-                reg.id, cae=r.cae, cae_vto=de_arca(r.cae_vto) if r.cae_vto else None
-            )
-            typer.secho(f"✓ {_resumen(reg)}: recuperado.", fg=typer.colors.GREEN)
+            else:
+                typer.secho(f"✓ {_resumen(reg)}: recuperado.", fg=typer.colors.GREEN)
 
     _ejecutar(run)
+
+
+def _recuperar_y_contar(ctx: Contexto, bs: list[Brecha]) -> None:
+    recuperados, no_encontrados = recuperar_brechas(ctx, bs)
+    for reg in recuperados:
+        typer.secho(f"✓ {_resumen(reg)}: recuperado.", fg=typer.colors.GREEN)
+    for n in no_encontrados:
+        typer.secho(f"✗ Nro. {n}: ARCA no lo tiene (o no está autorizado).", fg=typer.colors.RED)
+
+
+def _avisar_brecha(ctx: Contexto, yes: bool) -> None:
+    """Antes de emitir: avisa si ARCA tiene comprobantes que este historial no (otra PC u otro
+    sistema con el mismo punto de venta) y ofrece traerlos. Si ARCA no responde, no se frena acá:
+    la emisión misma va a informar el problema."""
+    try:
+        bs = brechas(ctx)
+        n = total_faltantes(bs)
+        if not n:
+            return
+        typer.secho(
+            f"ℹ Hay {n} comprobante(s) emitidos fuera de esta PC (ARCA los tiene y este "
+            "historial no).",
+            fg=typer.colors.CYAN,
+        )
+        if yes:
+            typer.echo("  Completalo con `facturitas recuperar`.")
+        elif _confirmar("¿Traerlos ahora de ARCA para completar el historial?"):
+            _recuperar_y_contar(ctx, bs)
+    except (ArcaError, httpx.HTTPError):
+        return
 
 
 @app.command("config")
@@ -1007,6 +1020,62 @@ def configurar(
         for amb in ("homo", "prod"):
             typer.echo(f"Historial {amb}:".ljust(16) + str(config.ruta_historial(amb)))
         typer.echo(f"Configuración:  {config.ruta_config()}")
+
+    _ejecutar(run)
+
+
+@app.command()
+def backup(
+    destino: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Carpeta o archivo .zip de destino (por defecto, Documentos/Facturitas/_backups)."
+        ),
+    ] = None,
+) -> None:
+    """Guarda las bases (homo y prod), los clientes y la config en un zip con fecha.
+
+    NO incluye la clave privada ni el .crt: esos archivos no salen nunca de su lugar.
+    """
+
+    def run() -> None:
+        r = backup_mod.crear_backup(destino)
+        typer.secho(f"✓ Backup creado: {r.ruta}", fg=typer.colors.GREEN)
+        typer.echo(f"  Incluye: {', '.join(r.archivos) or '(nada todavía)'}")
+        typer.echo("  No incluye la clave privada ni el certificado (guardalos aparte).")
+
+    _ejecutar(run)
+
+
+@app.command()
+def restaurar(
+    zip_path: Annotated[Path, typer.Argument(help="Backup creado con `facturitas backup`.")],
+    con_config: Annotated[
+        bool,
+        typer.Option(
+            "--con-config",
+            help="También restaura la config (trae las rutas del certificado de la PC de origen).",
+        ),
+    ] = False,
+    yes: Annotated[bool, typer.Option("--yes", help="No pregunta.")] = False,
+) -> None:
+    """Restaura un backup. Antes guarda una copia de lo que hay (en `backups-previos`)."""
+
+    def run() -> None:
+        meta = backup_mod.leer_manifiesto(zip_path)
+        typer.echo(f"Backup del {meta.get('fecha')} (Facturitas {meta.get('facturitas')}).")
+        typer.echo(f"Contiene: {', '.join(map(str, meta.get('archivos', [])))}")  # type: ignore[call-overload]
+        if not yes and not _confirmar(
+            "Esto reemplaza el historial y los clientes de esta PC. ¿Seguir?"
+        ):
+            typer.echo("Cancelado: no se tocó nada.")
+            return
+        restaurados, previo = backup_mod.restaurar(zip_path, con_config=con_config)
+        typer.secho(f"✓ Restaurado: {', '.join(restaurados)}", fg=typer.colors.GREEN)
+        if previo:
+            typer.echo(f"  Copia de lo anterior: {previo}")
+        if not con_config:
+            typer.echo("  La config no se tocó (usá --con-config para restaurarla también).")
 
     _ejecutar(run)
 

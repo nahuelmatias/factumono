@@ -31,6 +31,7 @@ from facturitas.core.models import (
     Receptor,
 )
 from facturitas.core.preview import markdown_preview
+from facturitas.core.sincronia import brechas, recuperar_brechas, total_faltantes
 from facturitas.pdf.salida import guardar_pdf
 from facturitas.storage.borradores import EMITIDO, Borradores
 from facturitas.storage.clientes import ClienteNoEncontrado
@@ -135,6 +136,7 @@ class Herramientas:
             "período. Es solo un aviso: mencionáselo al usuario."
             for d in ctx.posibles_duplicados(c)
         ]
+        info += self._aviso_brecha(ctx)
         b = ctx.borradores.crear(
             perfil=ctx.perfil_nombre,
             ambiente=ctx.ambiente,
@@ -158,6 +160,40 @@ class Herramientas:
             + (", más `confirmo_duplicado=true`" if b.requiere_extra else "")
             + ", SOLO después de que el usuario vio este preview y dijo explícitamente que sí."
         )
+
+    @staticmethod
+    def _aviso_brecha(ctx: Contexto) -> list[str]:
+        """Aviso si ARCA tiene comprobantes que este historial no (emitidos desde otra PC)."""
+        try:
+            n = total_faltantes(brechas(ctx))
+        except (ArcaError, httpx.HTTPError):
+            return []
+        if not n:
+            return []
+        return [
+            f"Hay {n} comprobante(s) emitidos fuera de esta PC que este historial no tiene. "
+            "Se pueden traer de ARCA con `recuperar_comprobantes` (no emite nada)."
+        ]
+
+    def recuperar_comprobantes(self, perfil: str | None = None) -> str:
+        """Completa el historial local con lo que ARCA tiene y falta acá. No emite nada."""
+        ctx = None
+        try:
+            ctx = self._contexto(perfil)
+            bs = brechas(ctx)
+            if not bs:
+                return self._responder(ctx, "El historial está completo: no falta nada.")
+            recuperados, no_encontrados = recuperar_brechas(ctx, bs)
+            lineas = [f"✅ Recuperé {len(recuperados)} comprobante(s) de ARCA:"]
+            lineas += [f"- {_corto(r)} · $ {money.formatear_ar(r.importe)}" for r in recuperados]
+            if no_encontrados:
+                lineas.append(f"- ⚠️ ARCA no devolvió los números {no_encontrados}.")
+            lineas.append(
+                "ℹ️ ARCA solo guarda los totales: ítems y datos del receptor quedan genéricos."
+            )
+            return self._responder(ctx, "\n".join(lineas))
+        except (*_ERRORES, httpx.HTTPError) as e:
+            return self._fallo(e, ctx)
 
     # --- consultas -------------------------------------------------------------------------
 
@@ -193,6 +229,8 @@ class Herramientas:
                     "- ℹ️ Sin puntos de venta listados (normal en homologación: no impide emitir)."
                 )
             lineas += [f"- ⚠️ {a}" for a in d.avisos]
+            if d.ticket_vence:
+                lineas += [f"- ℹ️ {a}" for a in self._aviso_brecha(ctx)]
             lineas += [f"- ❌ {p}" for p in d.problemas]
             return self._responder(ctx, "\n".join(lineas))
         except (*_ERRORES, httpx.HTTPError) as e:

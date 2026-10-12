@@ -39,10 +39,12 @@ class ArcaFalso:
 
     def ultimo_autorizado(self, punto_venta: int, cbte_tipo: int) -> int:
         self._red()
-        return max(self.autorizados, default=0)
+        return max((n for n, c in self.autorizados.items() if c.cbte_tipo == cbte_tipo), default=0)
 
     def proximo_numero(self, punto_venta: int, cbte_tipo: int) -> int:
-        return self.ultimo_autorizado(punto_venta, cbte_tipo) + 1
+        # El falso numera todos los tipos en una sola secuencia (más simple para los tests).
+        self._red()
+        return max(self.autorizados, default=0) + 1
 
     def solicitar_cae(self, c: Comprobante, numero: int) -> ResultadoCae:
         self.envios += 1
@@ -63,7 +65,7 @@ class ArcaFalso:
     ) -> ComprobanteConsultado | None:
         self._red()
         c = self.autorizados.get(numero)
-        if c is None:
+        if c is None or c.cbte_tipo != cbte_tipo:
             return None
         return ComprobanteConsultado(
             punto_venta=punto_venta,

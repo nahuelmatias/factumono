@@ -92,6 +92,13 @@ def crear_servidor(herramientas: Herramientas | None = None) -> MCPServer:
         return h.listar_comprobantes(perfil, limite, buscar)
 
     @servidor.tool()
+    def recuperar_comprobantes(perfil: str | None = None) -> str:
+        """Completa el historial local con los comprobantes que ARCA tiene autorizados y esta PC
+        no (por ejemplo, emitidos desde otra PC). Solo lee de ARCA y escribe el historial local:
+        NO emite nada. ARCA guarda solo los totales (sin ítems ni datos del receptor)."""
+        return h.recuperar_comprobantes(perfil)
+
+    @servidor.tool()
     def preparar_comprobante(
         perfil: str | None = None,
         cliente: str | None = None,
