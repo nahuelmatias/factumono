@@ -23,6 +23,7 @@ from facturitas.arca.errors import (
     EstadoIncierto,
     traducir,
 )
+from facturitas.arca.tls import cliente_arca
 from facturitas.arca.wsaa import Wsaa
 from facturitas.core.fechas import a_arca as _fecha
 from facturitas.core.fechas import de_arca
@@ -157,7 +158,7 @@ class Wsfe:
         self._wsaa = wsaa
         self._amb = ambiente
         self._cache = cache_dir
-        self._cliente = cliente or httpx.Client(timeout=60)
+        self._cliente = cliente or cliente_arca(60)
 
     # --- transporte -------------------------------------------------------------------------
 

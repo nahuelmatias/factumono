@@ -81,5 +81,5 @@ def test_fault_500_se_traduce(credencial: Credencial, tmp_path: Path) -> None:
 @respx.mock
 def test_sin_red_da_mensaje_claro(credencial: Credencial, tmp_path: Path) -> None:
     respx.post(HOMO.wsaa_url).mock(side_effect=httpx.ConnectError("sin red"))
-    with pytest.raises(WsaaError, match="No se pudo conectar"):
+    with pytest.raises(WsaaError, match="No se pudo comunicar"):
         _wsaa(credencial, tmp_path).ticket()

@@ -100,3 +100,44 @@ def traducir_falla_wsaa(faultstring: str) -> str:
         if clave in faultstring:
             return f"{texto} (ARCA: {faultstring})"
     return f"ARCA rechazó el pedido de acceso: {faultstring}"
+
+
+# Errores de TLS/red frecuentes -> (texto en el error, explicación en español)
+ERRORES_SSL: tuple[tuple[str, str], ...] = (
+    (
+        "DH_KEY_TOO_SMALL",
+        "El servidor de ARCA usa una clave Diffie-Hellman de 1024 bits que el OpenSSL de Python "
+        "rechaza. Facturitas ya la evita (excluye los cifrados DH); si ves esto, actualizá "
+        "Facturitas o avisá.",
+    ),
+    (
+        "CERTIFICATE_VERIFY_FAILED",
+        "No se pudo verificar el certificado del servidor de ARCA. Revisá la fecha y hora de la "
+        "PC y que ningún antivirus o proxy intercepte HTTPS. Facturitas no desactiva esta "
+        "verificación.",
+    ),
+    (
+        "CERTIFICATE_HOSTNAME_MISMATCH",
+        "El certificado del servidor no corresponde al host de ARCA. Puede haber un proxy o una "
+        "red que intercepta la conexión.",
+    ),
+    (
+        "UNSAFE_LEGACY_RENEGOTIATION_DISABLED",
+        "El servidor de ARCA usa una renegociación TLS antigua que Python rechaza.",
+    ),
+    (
+        "WRONG_VERSION_NUMBER",
+        "La conexión TLS con ARCA falló (respuesta inesperada). Suele ser un proxy o un filtro "
+        "de red.",
+    ),
+    ("SSL: ", "Falló la conexión segura (TLS) con ARCA."),
+)
+
+
+def traducir_error_red(e: Exception) -> str:
+    """Mensaje claro para un error de conexión con ARCA (con el detalle técnico al final)."""
+    detalle = str(e)
+    for clave, texto in ERRORES_SSL:
+        if clave in detalle:
+            return f"{texto} ({detalle})"
+    return f"No se pudo comunicar con ARCA. Revisá la conexión. ({detalle})"

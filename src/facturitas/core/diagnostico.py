@@ -9,9 +9,13 @@ from datetime import datetime
 
 import httpx
 
-from facturitas.arca.errors import ArcaError
+from facturitas.arca.errors import ArcaError, traducir_error_red
 from facturitas.arca.wsfe import PuntoVenta
 from facturitas.contexto import Contexto
+
+
+def _texto(e: Exception) -> str:
+    return traducir_error_red(e) if isinstance(e, httpx.HTTPError) else str(e)
 
 
 @dataclass
@@ -75,17 +79,17 @@ def diagnosticar(ctx: Contexto) -> Diagnostico:
         if not d.dummy_ok:
             d.problemas.append(f"Los servidores de ARCA no responden bien: {d.dummy}.")
     except (ArcaError, httpx.HTTPError) as e:
-        d.problemas.append(f"No se pudo consultar FEDummy: {e}")
+        d.problemas.append(f"No se pudo consultar FEDummy: {_texto(e)}")
         return d
     try:
         d.ticket_vence = ctx.wsaa.ticket("wsfe").vencimiento
     except (ArcaError, httpx.HTTPError) as e:
-        d.problemas.append(f"No se pudo autenticar con ARCA: {e}")
+        d.problemas.append(f"No se pudo autenticar con ARCA: {_texto(e)}")
         return d
     try:
         d.pvs = ctx.wsfe.puntos_venta()
     except (ArcaError, httpx.HTTPError) as e:
-        d.problemas.append(f"No se pudieron listar los puntos de venta: {e}")
+        d.problemas.append(f"No se pudieron listar los puntos de venta: {_texto(e)}")
         return d
     problemas, avisos = evaluar_punto_venta(d.pvs, d.pv_configurado, ctx.es_produccion)
     d.problemas += problemas

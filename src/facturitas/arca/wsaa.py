@@ -21,7 +21,8 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.serialization import pkcs7
 
 from facturitas.arca.ambientes import Ambiente
-from facturitas.arca.errors import WsaaError, traducir_falla_wsaa
+from facturitas.arca.errors import WsaaError, traducir_error_red, traducir_falla_wsaa
+from facturitas.arca.tls import cliente_arca
 from facturitas.config import restringir_permisos
 from facturitas.core.models import Credencial
 
@@ -116,7 +117,7 @@ class Wsaa:
         self._cred = credencial
         self._amb = ambiente
         self._cache = cache_dir
-        self._cliente = cliente or httpx.Client(timeout=30)
+        self._cliente = cliente or cliente_arca(30)
         self._ahora = ahora
 
     def _archivo_cache(self, servicio: str) -> Path:
@@ -165,7 +166,7 @@ class Wsaa:
                 headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": '""'},
             )
         except httpx.HTTPError as e:
-            raise WsaaError(f"No se pudo conectar con el WSAA de ARCA: {e}") from None
+            raise WsaaError(f"WSAA: {traducir_error_red(e)}") from None
         # ARCA responde 500 con un SOAP Fault cuando rechaza el pedido: se parsea igual.
         ticket = parsear_respuesta(resp.text)
         self._guardar_cache(servicio, ticket)

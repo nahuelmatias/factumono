@@ -18,7 +18,7 @@ from typer import rich_utils
 
 from facturitas import __version__, config
 from facturitas.arca import ambientes
-from facturitas.arca.errors import ArcaError
+from facturitas.arca.errors import ArcaError, traducir_error_red
 from facturitas.contexto import Contexto, construir
 from facturitas.core import armado, money, service
 from facturitas.core import cuit as cuit_mod
@@ -86,7 +86,7 @@ def _ejecutar(fn: Callable[[], None]) -> None:
     except (ArcaError, config.ConfigError, ValueError) as e:
         _fallar(str(e))
     except httpx.HTTPError as e:
-        _fallar(f"No se pudo comunicar con ARCA. Revisá tu conexión. ({e})")
+        _fallar(traducir_error_red(e))
 
 
 def _banner_prod(ambiente: str) -> None:

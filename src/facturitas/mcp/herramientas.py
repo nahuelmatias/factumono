@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from facturitas import config
 from facturitas.arca import ambientes
-from facturitas.arca.errors import ArcaError, EstadoIncierto
+from facturitas.arca.errors import ArcaError, EstadoIncierto, traducir_error_red
 from facturitas.contexto import Contexto
 from facturitas.contexto import construir as construir_contexto
 from facturitas.core import armado, money, service
@@ -88,10 +88,7 @@ class Herramientas:
         return f"{ctx.aviso_ambiente}\n\n{cuerpo}"
 
     def _fallo(self, e: Exception, ctx: Contexto | None = None) -> str:
-        if isinstance(e, httpx.HTTPError):
-            texto = f"No se pudo comunicar con ARCA. Revisá la conexión. ({e})"
-        else:
-            texto = str(e)
+        texto = traducir_error_red(e) if isinstance(e, httpx.HTTPError) else str(e)
         cuerpo = f"❌ {texto}"
         return self._responder(ctx, cuerpo) if ctx else f"{self._banner_activo()}\n\n{cuerpo}"
 
