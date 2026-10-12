@@ -213,6 +213,22 @@ uv run facturitas ambiente usar prod                        # recién acá se ac
 
 La primera factura real conviene emitirla vos, mirando el preview completo.
 
+## Usarlo en una segunda PC
+
+> Hoy el historial, los clientes y los PDF viven en cada PC. La sincronización está planificada
+> (hito M3.5 en [CLAUDE.md](CLAUDE.md)); mientras tanto, esto es lo que hay que saber.
+
+- **La numeración no se pisa:** antes de emitir siempre se consulta a ARCA el último número
+  autorizado, así que dos PCs con el mismo punto de venta no repiten número.
+- **El historial local queda incompleto:** lo emitido desde la otra PC no aparece acá. Con
+  `facturitas recuperar <desde> <hasta>` se trae de ARCA (solo los totales: ARCA no guarda ítems
+  ni datos del receptor).
+- **Certificado propio por PC:** no copies la clave privada de una PC a otra. En la segunda PC
+  generá otra clave y otro pedido (CSR), subilo en «Administración de Certificados Digitales» con
+  **otro alias** (por ejemplo `facturitas-prod-pc2`) y asocialo a la misma relación de `wsfe`
+  en «Administrador de Relaciones de Clave Fiscal». Después, `facturitas init --ambiente prod`.
+- Los clientes guardados hay que cargarlos de nuevo en cada PC (por ahora).
+
 ## Nombre de fantasía
 
 El perfil tiene un campo opcional `nombre_fantasia` que se imprime en el PDF (útil para un

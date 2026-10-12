@@ -142,6 +142,8 @@ facturitas/
 
 ## 9. Hitos (hacerlos en orden, cada uno con su PR y criterio de aceptación)
 
+Orden vigente: M3.5 → spike de empaquetado → M4 → M5 → M6 completo → M7.
+
 - **M0 · Esqueleto**: repo, `uv`, lint (ruff), tipos (mypy o pyright), pytest, CI básico en los 3 SO, licencia MIT y README inicial.
   *Acepta:* CI verde en Windows, Linux y macOS.
 - **M1 · Motor ARCA en homologación**: WSAA con caché de TA, `FEDummy`, `FECompUltimoAutorizado`, `FEParamGet*`, `FECAESolicitar` para Factura C (servicios y productos) con `CondicionIVAReceptorId`, más CLI mínima (`init`, `estado`, `ultimo`, `emitir`).
@@ -150,17 +152,27 @@ facturitas/
   *Acepta:* casos de Matías (servicios con período) y panadería (productos con kg y docena) generan PDF correcto; un corte simulado de red no duplica el comprobante.
 - **M3 · MCP**: tools de la sección 6 con el flujo preparar/confirmar. Instrucciones de conexión para Claude Desktop, Claude Code y Gemini CLI.
   *Acepta:* el prompt de ejemplo de Acciona funciona de punta a punta desde Claude Desktop en homologación.
+- **M3.5 · Historial multi-PC** (antes de M4; *planificado, no implementado*).
+  *Problema:* el historial, los clientes y los PDF viven en cada PC. La numeración no se pisa (siempre se consulta `FECompUltimoAutorizado`), pero el historial local puede quedar incompleto si se emite desde otra PC u otro sistema con el mismo punto de venta.
+  *Paso 1 (local):* al iniciar y antes de cada emisión, comparar el último número de ARCA con el último del historial local. Si ARCA tiene más, avisar («hay N comprobantes emitidos fuera de esta PC») y ofrecer `facturitas recuperar` automático para completar el historial con lo que guarda ARCA (ARCA solo guarda totales: ítems y datos del receptor no se recuperan).
+  *Paso 2 (sync):* opción de guardar la base y los clientes en una carpeta sincronizada (OneDrive/Drive/Dropbox) con bloqueo para que dos PCs no escriban a la vez, o export/import. **Nunca sincronizar la clave privada.**
+  *Backup:* `facturitas backup [destino]` genera un zip con fecha en el nombre con las bases (homo y prod), la config y los clientes, **sin** la clave privada ni el `.crt`; `facturitas restaurar <zip>` lo restaura (sirve también como export/import entre PCs).
+  *Documentación:* README con cómo usar Facturitas en una segunda PC (certificado propio por PC con otro alias, asociado a la misma relación `wsfe`).
+  *Acepta:* emitir desde dos PCs con el mismo punto de venta y que ambas terminen con el historial completo, sin duplicados ni pisarse la base.
+- **Spike de empaquetado** (M6 adelantado, mínimo; antes de M4): PyInstaller `--onedir` de la CLI + MCP actual en Windows, sin instalador.
+  *Acepta:* el `.exe` corre `--version`, `estado` y emite una Factura C en homologación desde una carpeta sin Python. Los problemas con reportlab, mcp o cryptography se documentan acá. Se agrega al CI de Windows un job que solo construye y hace el smoke test.
 - **M4 · Web UI + asistente de certificado + botón "Conectar con mi IA"**.
   *Acepta:* una persona no técnica completa el setup en homologación siguiendo solo la UI.
 - **M5 · API REST + Factura A/B con IVA** (para Postaberry), token local, OpenAPI y ejemplos de `curl`. Incluye **Nota de Crédito parcial** (en M2 la NC es solo total).
   *Acepta:* un script que simula el POS emite 50 tickets seguidos sin duplicados ni errores.
-- **M6 · Instaladores**: workflow de release con `.exe` (Inno Setup), AppImage y `.dmg`.
+- **M6 · Instaladores** (completo: instaladores sobre el spike): workflow de release con `.exe` (Inno Setup), AppImage y `.dmg`.
   *Acepta:* instalar desde el Release en una Windows limpia y emitir en homologación sin tener Python instalado.
 - **M7 · Extras**: lote desde Excel/CSV (caso Miguel), "repetir factura del mes pasado", resumen contra topes de monotributo (topes configurables, no hardcodeados), recordatorio mensual (tarea programada del SO opcional) y, más adelante, contingencia con CAEA para el POS.
 
 ## 10. Cómo trabajar en este repo
 
 - **Nunca** apuntar a producción de ARCA desde tests, scripts ni ejemplos. Producción solo la habilita el usuario a mano.
+- No emitir comprobantes reales en producción para "probar" (ni NC): lo probado en homologación es el mismo código. La NC se prueba en prod el día que haya que anular algo de verdad.
 - Antes de implementar algo de ARCA, citar en el PR la sección del manual oficial en la que te basaste. Si la doc y este archivo se contradicen, gana la doc: actualizá este archivo y avisá.
 - Commits chicos y descriptivos. Cada hito termina con README actualizado.
 - Si algo requiere una decisión del usuario (licencia, nombre, firma de código, gastos), preguntar en vez de asumir.
