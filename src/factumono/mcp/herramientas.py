@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 from pydantic import BaseModel
@@ -18,10 +19,11 @@ from factumono.arca import ambientes
 from factumono.arca.errors import ArcaError, EstadoIncierto, traducir_error_red
 from factumono.contexto import Contexto
 from factumono.contexto import construir as construir_contexto
-from factumono.core import armado, money, service
+from factumono.core import armado, importacion, money, service
 from factumono.core import cuit as cuit_mod
 from factumono.core.diagnostico import diagnosticar, esta_dado_de_baja
 from factumono.core.fechas import mostrar as fecha_ar
+from factumono.core.lectura import FacturaLeida, LecturaMisComprobantes, NoReconocido
 from factumono.core.models import (
     MODOS_PERIODO,
     NOMBRES_COMPROBANTE,
@@ -50,6 +52,34 @@ class ItemEntrada(BaseModel):
     cantidad: str | float | int = 1
     unidad: str = "unidades"
     codigo: str = "1"
+
+
+class ItemPlantilla(BaseModel):
+    """Un ítem de la factura anterior, tal como lo leyó la IA."""
+
+    descripcion: str
+    precio_unitario: str | float | int
+    cantidad: str | float | int = 1
+    unidad: str = "unidades"
+    codigo: str = "1"
+    bonificacion_pct: str | float | int = 0
+
+
+class PlantillaEntrada(BaseModel):
+    """Datos de una factura anterior extraídos por la IA (cuando el PDF no se pudo leer solo)."""
+
+    nombre: str
+    items: list[ItemPlantilla]
+    cuit: str | None = None
+    dni: str | None = None
+    condicion_iva: str = "Consumidor Final"
+    domicilio: str = ""
+    concepto: str | int = 2
+    condicion_venta: str = "Contado"
+    fecha: str | None = None  # AAAA-MM-DD
+    periodo_desde: str | None = None
+    periodo_hasta: str | None = None
+    vto_pago: str | None = None
 
 
 class ReceptorEntrada(BaseModel):
@@ -557,6 +587,9 @@ class Herramientas:
                         its = tuple(_item(i) for i in items)
                     elif importe is not None:
                         its = (armado.item_de_cliente(cli, _num(importe), descripcion),)
+                    elif armado.items_de_plantilla(cli):
+                        its = armado.items_de_plantilla(cli)
+                        nota = f"Uso la plantilla de «{cli.alias}» ({len(its)} ítem/s)."
                     else:
                         raise ValueError("Falta el importe (o los ítems) a facturar.")
                     c = armado.armar_comprobante(
@@ -627,6 +660,89 @@ class Herramientas:
                 for p in previas
             ]
             return self._responder(ctx, self._preparar(ctx, nc, avisos_extra=extra))
+        except (*_ERRORES, httpx.HTTPError) as e:
+            return self._fallo(e, ctx)
+
+    # --- importar facturas anteriores (siempre con preview y confirmación) ---------------------
+
+    _TEXTO_CRUDO_MAX = 6000
+
+    def _pendiente_de_importacion(
+        self,
+        ctx: Contexto,
+        lecturas: list[FacturaLeida | NoReconocido],
+        mis: LecturaMisComprobantes | None,
+    ) -> str:
+        plan = importacion.planear(ctx, lecturas, mis)
+        cuerpo = [plan.texto()]
+        for n in plan.no_reconocidos:
+            crudo = (n.texto or "(sin texto: es una imagen)")[: self._TEXTO_CRUDO_MAX]
+            cuerpo.append(
+                f"\n**No reconocido: {n.archivo}** — {n.motivo}\n"
+                "Interpretá vos el texto y cargalo con `guardar_plantilla`:\n"
+                f"```\n{crudo}\n```"
+            )
+        if not plan.hay_algo_para_guardar:
+            cuerpo.append("\nNo hay nada para guardar todavía.")
+            return "\n".join(cuerpo)
+        p = ctx.importaciones.crear(
+            ctx.perfil_nombre, ctx.ambiente, importacion.a_payload(lecturas, mis), self._ahora()
+        )
+        cuerpo.append(
+            f"\nTodavía NO se guardó nada. Mostrale esto al usuario y, solo si confirma, llamá a "
+            f'`confirmar_importacion` con `importacion_id="{p.id}"` y `confirmo=true` '
+            f"(vence a las {p.vence:%H:%M})."
+        )
+        return "\n".join(cuerpo)
+
+    def importar_factura(self, ruta: str, perfil: str | None = None) -> str:
+        """Lee una factura anterior (PDF de ARCA o de Factumono, carpeta, o Excel/CSV de «Mis
+        Comprobantes») de forma determinística y prepara qué se guardaría. No guarda nada."""
+        ctx = None
+        try:
+            ctx = self._contexto(perfil)
+            lecturas, mis = importacion.leer_rutas([Path(ruta).expanduser()])
+            return self._responder(ctx, self._pendiente_de_importacion(ctx, lecturas, mis))
+        except (*_ERRORES, httpx.HTTPError, OSError) as e:
+            return self._fallo(e, ctx)
+
+    def guardar_plantilla(self, datos: PlantillaEntrada, perfil: str | None = None) -> str:
+        """Prepara guardar como cliente + plantilla los datos que la IA extrajo de una factura
+        que no se pudo leer sola. No guarda nada hasta `confirmar_importacion`."""
+        ctx = None
+        try:
+            ctx = self._contexto(perfil)
+            factura = importacion.factura_de_datos(datos.model_dump())
+            return self._responder(ctx, self._pendiente_de_importacion(ctx, [factura], None))
+        except (*_ERRORES, httpx.HTTPError) as e:
+            return self._fallo(e, ctx)
+
+    def confirmar_importacion(
+        self, importacion_id: str, confirmo: bool = False, perfil: str | None = None
+    ) -> str:
+        """Guarda lo que `importar_factura` / `guardar_plantilla` prepararon. Exige `confirmo=true`
+        (solo si el usuario vio el preview y dijo que sí)."""
+        ctx = None
+        try:
+            ctx = self._contexto(perfil)
+            if confirmo is not True:
+                return self._responder(
+                    ctx,
+                    "🛑 No se guardó nada: falta la confirmación explícita del usuario "
+                    "(`confirmo=true`). Mostrale el preview y preguntale.",
+                )
+            p = ctx.importaciones.obtener(importacion_id)
+            if p is None:
+                raise ValueError(f"No existe la importación {importacion_id}. Prepará una nueva.")
+            if p.vencida(self._ahora()):
+                raise ValueError("La importación venció (duran 15 minutos). Prepará una nueva.")
+            if p.ambiente != ctx.ambiente or p.perfil != ctx.perfil_nombre:
+                raise ValueError("Cambió el perfil o el ambiente: prepará la importación de nuevo.")
+            lecturas, mis = importacion.de_payload(p.datos)
+            plan = importacion.planear(ctx, lecturas, mis)
+            res = importacion.aplicar(ctx, plan)
+            ctx.importaciones.borrar(p.id)
+            return self._responder(ctx, f"✅ Listo: {res.texto()}.")
         except (*_ERRORES, httpx.HTTPError) as e:
             return self._fallo(e, ctx)
 

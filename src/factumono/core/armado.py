@@ -5,6 +5,7 @@ mismo en los dos lados.
 """
 
 import calendar
+import json
 import re
 import unicodedata
 from dataclasses import replace
@@ -208,6 +209,44 @@ def armar_comprobante(
         )
     c.validar()
     return c
+
+
+def plantilla_a_json(items: "tuple[Item, ...] | list[Item]") -> str:
+    """Los ítems de una factura anterior, para guardarlos como plantilla del cliente."""
+    return json.dumps(
+        [
+            {
+                "codigo": i.codigo,
+                "descripcion": i.descripcion,
+                "cantidad": str(i.cantidad),
+                "unidad": i.unidad,
+                "precio_unitario": str(i.precio_unitario),
+                "bonificacion_pct": str(i.bonificacion_pct),
+            }
+            for i in items
+        ],
+        ensure_ascii=False,
+    )
+
+
+def items_de_plantilla(c: Cliente) -> tuple[Item, ...]:
+    """Los ítems de la plantilla del cliente (vacío si no tiene)."""
+    if not c.plantilla:
+        return ()
+    try:
+        return tuple(
+            Item(
+                descripcion=d["descripcion"],
+                cantidad=Decimal(d["cantidad"]),
+                precio_unitario=Decimal(d["precio_unitario"]),
+                unidad=d.get("unidad", "unidades"),
+                codigo=str(d.get("codigo", "1")),
+                bonificacion_pct=Decimal(d.get("bonificacion_pct", "0")),
+            )
+            for d in json.loads(c.plantilla)
+        )
+    except (KeyError, ValueError, TypeError, ArithmeticError):
+        raise ValueError(f"La plantilla de «{c.alias}» está dañada: volvé a importarla.") from None
 
 
 def item_de_cliente(c: Cliente, importe: Decimal, descripcion: str | None = None) -> Item:

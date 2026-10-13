@@ -58,6 +58,12 @@ if ($vivo) { Stop-Process -Id $proc.Id -Force }
 if (-not $vivo) { throw "factumono-gui.exe se cerró solo (código $($proc.ExitCode))" }
 Write-Host "OK: factumono-gui.exe abre y se mantiene"
 
+$salida = & $exe importar --probar 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0 -or $salida -notmatch "OK: el lector") {
+    throw "importar --probar falló ($LASTEXITCODE): $salida"
+}
+Write-Host "OK: el lector de facturas anteriores empaquetado funciona (pdfium, QR)"
+
 uv run python packaging/smoke_mcp.py $exe
 if ($LASTEXITCODE -ne 0) { throw "El MCP empaquetado no responde" }
 Remove-Item Env:FACTUMONO_HOME

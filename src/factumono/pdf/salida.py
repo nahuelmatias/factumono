@@ -26,6 +26,11 @@ def ruta_pdf(cfg: Config, reg: Registro, carpeta: Path | None = None) -> Path:
 
 def guardar_pdf(cfg: Config, reg: Registro, carpeta: Path | None = None) -> Path:
     """Genera el PDF de un comprobante autorizado y lo guarda. Devuelve la ruta."""
+    if reg.externo:
+        raise ValueError(
+            "Es una factura importada (no la emitió Factumono): el PDF válido es el original de "
+            "ARCA."
+        )
     if reg.numero is None or reg.cae == "" or reg.cae_vto is None:
         raise ValueError("Solo se puede generar el PDF de un comprobante autorizado (con CAE).")
     ruta = ruta_pdf(cfg, reg, carpeta)

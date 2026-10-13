@@ -39,6 +39,27 @@ por **preparar → mostrar el preview → confirmar**. Nada se emite sin que el 
 5. **Mostrar el preview y preguntar.** Recién con un "sí" explícito: `emitir_comprobante(borrador_id=..., confirmo=true)`.
 6. **Devolver el resultado:** número, CAE y la ruta del PDF.
 
+## Período y concepto
+
+- `concepto`: **1** = productos, **2** = servicios, **3** = productos y servicios. El 2 y el 3
+  llevan período y vencimiento.
+- Cada cliente guarda su **modo de período**: `mes` (mes completo), `dia` (día de emisión),
+  `rango` (desde-hasta, hay que indicarlo con `periodo="03/09/2026 al 17/09/2026"`) o `sin` (sin
+  período: solo productos). «La de siempre» lo respeta. Si el cliente está en `rango`, preguntá las
+  fechas. Podés forzar otro modo con `modo_periodo`.
+
+## Importar facturas anteriores
+
+- «Importá esta factura» / «cargá los clientes de estas facturas» → `importar_factura(ruta)`:
+  lee el PDF de ARCA (o de Factumono, una carpeta, o el Excel/CSV de «Mis Comprobantes») de forma
+  determinística, valida el QR y **prepara** qué se guardaría. Mostrale el preview completo y,
+  solo con un «sí» explícito, `confirmar_importacion(importacion_id=..., confirmo=true)`.
+- Si devuelve **«No reconocido»** con el texto crudo (no es de ARCA o es una imagen): interpretalo
+  vos y cargalo con `guardar_plantilla(datos)` (nombre, CUIT o DNI, condición IVA, domicilio,
+  concepto, ítems). **No inventes datos** que no estén en el texto. Es el mismo paso doble: preview
+  y confirmación.
+- Cuando un cliente tiene plantilla, `preparar_comprobante(cliente="acme")` sin importe usa sus ítems.
+
 ## Otras consultas
 
 - "¿Cuánto facturé este año?" → `resumen_facturacion` (sin fechas = lo que va del año; para

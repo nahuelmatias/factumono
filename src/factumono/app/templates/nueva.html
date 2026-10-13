@@ -14,7 +14,8 @@
   {% endif %}
 
   <label for="importe">Importe</label>
-  <input id="importe" class="importe" name="importe" inputmode="decimal" placeholder="1.500,50" {{ '' if repetir else 'required' }} autofocus>
+  <input id="importe" class="importe" name="importe" inputmode="decimal" placeholder="1.500,50" autofocus>
+  <small>Si lo dejás vacío uso la plantilla del cliente (los ítems de su última factura importada), o repito la de siempre.</small>
 
   <div id="opciones">{% include "_opciones.html" %}</div>
 

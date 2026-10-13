@@ -266,6 +266,64 @@ uv run factumono ambiente usar prod                        # recién acá se act
 
 La primera factura real conviene emitirla vos, mirando el preview completo.
 
+## Facturas anteriores: importar clientes y plantillas
+
+¿Ya facturabas antes de Factumono? Arrastrá tus facturas viejas y listo: el cliente queda guardado
+con su domicilio, su condición frente al IVA y los ítems de su última factura (la «plantilla»), y lo
+que ya facturaste suma al cálculo de tu tope.
+
+```
+factumono importar "C:\Facturas\2026"            # una carpeta con PDF (o un PDF suelto)
+factumono importar mis-comprobantes.xlsx          # el Excel/CSV de «Mis Comprobantes → Emitidos»
+```
+
+- **Se lee sin adivinar:** los PDF de ARCA («Comprobantes en línea») y los de Factumono tienen un
+  diseño fijo; se extraen emisor, receptor (nombre, CUIT/DNI, condición IVA, domicilio), concepto,
+  período, vencimiento, condición de venta e ítems (código, descripción, cantidad, unidad, precio y
+  bonificación). El **QR** se decodifica y valida los datos duros (CUIT, punto de venta, número,
+  importe, CAE, documento del receptor): si no coincide con el texto, avisa y no registra nada.
+- **Siempre con preview y confirmación:** muestra qué crearía o actualizaría y pregunta antes de
+  guardar (`--yes` para scripts).
+- Si el emisor del PDF es tu perfil, la factura queda como **comprobante histórico externo**
+  (marcado, no lo emitió Factumono): cuenta para el tope del monotributo, para detectar huecos de
+  numeración y para «la de siempre». No se puede reimprimir con nuestro formato: el PDF válido es
+  el de ARCA.
+- Si el archivo **no es de ARCA** o es una imagen, dice «no reconocido» y devuelve el texto crudo
+  (`--texto`); con Claude Desktop, la IA lo interpreta y lo carga con `guardar_plantilla`.
+- Desde la **ventana**: *Facturas viejas* → «Arrastrá una factura vieja» → ves lo detectado →
+  *Guardar*. Desde la **IA**: «importá esta factura» (`importar_factura` → `confirmar_importacion`).
+- Después, `factumono emitir --cliente acme` sin precio usa la plantilla del cliente.
+
+## Período y concepto de cada cliente
+
+Cada cliente tiene un **modo de período** y un **concepto** (1 = productos, 2 = servicios,
+3 = productos y servicios; el 2 y el 3 llevan período y vencimiento):
+
+| Modo | Período de la factura | «La de siempre» |
+|---|---|---|
+| `mes` (mes completo) | el mes completo (por defecto el mes en curso) | el mes siguiente al último facturado |
+| `dia` (día de emisión) | solo el día en que emitís | hoy |
+| `rango` | el desde-hasta que indiques | el mismo rango, un mes después |
+| `sin` (sin período) | ninguno (solo productos) | ninguno |
+
+```
+factumono cliente agregar acme --nombre "ACME SA" --cuit 30000000007 ^
+    --condicion-iva "IVA Responsable Inscripto" --concepto 2 --modo-periodo dia
+factumono emitir --cliente acme --precio 1500 --concepto 3 --modo-periodo mes
+```
+
+En la ventana y en el MCP el concepto y el modo se eligen igual (con un selector claro). Los clientes
+que ya tenías quedan en modo «automático» (se deduce de la última factura, como hasta ahora).
+
+## Si venís de la versión anterior (cambio de nombre)
+
+El programa se llamaba distinto antes de ser **Factumono**. La primera vez que corre esta versión
+migra solo, sin perder nada, tu configuración, tus bases (la de producción incluida), la caché, los
+clientes, la carpeta de certificados y claves (`~/.factumono/`) y la carpeta de PDF por defecto
+(`Documentos\Factumono`); avisa **una sola vez**. Si no puede mover algo (un archivo en uso,
+OneDrive), lo copia o lo deja donde está y lo sigue usando. Si usabas Claude Desktop, corré
+`factumono mcp instalar` (o el botón de «Mi IA»): reemplaza la entrada vieja por la nueva.
+
 ## Backup y segunda PC
 
 ### Backup

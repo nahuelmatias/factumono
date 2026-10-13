@@ -86,6 +86,9 @@ class Registro:
     observaciones: list[str] = field(default_factory=list)
     error: str = ""
     recuperado: bool = False
+    # Emitido fuera de Factumono (PDF o «Mis Comprobantes» importados): cuenta para el tope y la
+    # numeración, pero no lo emitió este programa.
+    externo: bool = False
     creado: datetime = field(default_factory=datetime.now)
 
     @property
@@ -123,6 +126,7 @@ def _registro(fila: sqlite3.Row) -> Registro:
         observaciones=json.loads(fila["observaciones"]),
         error=fila["error"],
         recuperado=bool(fila["recuperado"]),
+        externo=bool(fila["externo"]),
         creado=datetime.fromisoformat(fila["creado"]),
     )
 
@@ -150,6 +154,11 @@ class Historial:
         nueva = not self.ruta.exists()
         with self._con() as con:
             con.executescript(_ESQUEMA)
+            columnas = {f["name"] for f in con.execute("PRAGMA table_info(comprobantes)")}
+            if "externo" not in columnas:  # bases de versiones anteriores
+                con.execute(
+                    "ALTER TABLE comprobantes ADD COLUMN externo INTEGER NOT NULL DEFAULT 0"
+                )
         if nueva:
             config.restringir_permisos(self.ruta)
 
@@ -177,6 +186,7 @@ class Historial:
         estado: str = PENDIENTE,
         numero: int | None = None,
         recuperado: bool = False,
+        externo: bool = False,
     ) -> Registro:
         ahora = datetime.now().isoformat(timespec="seconds")
         cols: dict[str, Any] = {
@@ -188,6 +198,7 @@ class Historial:
             "clave": clave,
             "asociado_id": asociado_id,
             "recuperado": int(recuperado),
+            "externo": int(externo),
             "creado": ahora,
             "actualizado": ahora,
             **_columnas(c),

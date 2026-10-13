@@ -11,13 +11,17 @@ dependencies = [
     "httpx>=0.27",
     "jinja2>=3.1.6",
     "mcp>=2.3.0",
+    "openpyxl>=3.1.5",
     "platformdirs>=4",
+    "pypdf>=6.20.0",
+    "pypdfium2>=5.14.0",
     "python-multipart>=0.0.32",
     "pywebview>=6.2.1",
     "qrcode>=8.2",
     "reportlab>=5.0.1",
     "typer>=0.12",
     "uvicorn>=0.30",
+    "zxing-cpp>=3.1.1",
 ]
 
 [project.scripts]
@@ -61,5 +65,5 @@ addopts = "-m 'not homo'"
 markers = ["homo: integración contra homologación de ARCA (requiere credencial configurada)"]
 
 [[tool.mypy.overrides]]
-module = ["reportlab.*", "qrcode.*"]
+module = ["reportlab.*", "qrcode.*", "pypdfium2.*", "openpyxl.*", "zxingcpp.*"]
 ignore_missing_imports = true

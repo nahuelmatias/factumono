@@ -6,8 +6,10 @@ vigente y confirmado** con el botón «Emitir» después de ver el preview.
 """
 
 import contextlib
+import re
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
@@ -20,10 +22,11 @@ from factumono.arca import ambientes
 from factumono.arca.csr import carpeta_certificados, generar_clave_y_csr
 from factumono.cli import asistente as asis
 from factumono.contexto import Contexto, construir
-from factumono.core import armado, money, service, topes
+from factumono.core import armado, importacion, money, service, topes
 from factumono.core import cuit as cuit_mod
 from factumono.core.diagnostico import Diagnostico, diagnosticar, problemas_para_activar_produccion
 from factumono.core.fechas import mostrar as fecha_ar
+from factumono.core.lectura import FacturaLeida, NoReconocido
 from factumono.core.models import (
     NOMBRES_COMPROBANTE,
     NOMBRES_CONCEPTO,
@@ -150,6 +153,15 @@ class FilaFactura:
     es_nc: bool
     anulada: bool
     homologacion: bool
+    externa: bool = False
+
+
+@dataclass
+class VistaImportacion:
+    plan: importacion.Plan
+    importacion_id: str
+    vence: str
+    ambiente: str
 
 
 @dataclass
@@ -376,6 +388,7 @@ class Servicios:
                     es_nc=es_nc,
                     anulada=(not es_nc) and bool(ctx.historial.notas_de_credito_de(r.id)),
                     homologacion=r.es_homologacion,
+                    externa=r.externo,
                 )
             )
         return filas[:limite]
@@ -528,14 +541,23 @@ class Servicios:
                     else f"Es la de siempre: repite la {numero_corto(ultima)}."
                 )
             else:
-                if imp is None:
+                try:
+                    plantilla = armado.items_de_plantilla(cli)
+                except ValueError as e:
+                    raise ErrorUsuario(str(e)) from None
+                if imp is None and not plantilla:
                     raise ErrorUsuario("Falta el importe.")
+                if imp is None:
+                    nota = f"Uso la plantilla de «{cli.alias}» ({len(plantilla)} ítem/s)."
+                    items_c = plantilla
+                else:
+                    items_c = (armado.item_de_cliente(cli, imp, descripcion.strip() or None),)
                 c = armado.armar_comprobante(
                     perfil=ctx.perfil,
                     punto_venta=ctx.perfil.punto_venta,
                     cbte_tipo=ctx.perfil.cbte_tipo_default,
                     receptor=armado.receptor_de_cliente(ctx.wsfe, cli),
-                    items=(armado.item_de_cliente(cli, imp, descripcion.strip() or None),),
+                    items=items_c,
                     concepto=conc,
                     hoy=hoy,
                     desde=desde_f,
@@ -720,6 +742,56 @@ class Servicios:
             reutilizado=em.reutilizado,
             es_homologacion=r.es_homologacion,
         )
+
+    # --- importar facturas anteriores ---------------------------------------------------------
+
+    def analizar_importacion(self, archivos: list[tuple[str, bytes]]) -> "VistaImportacion":
+        """Lee lo que se arrastró (PDF, Excel/CSV) y prepara qué se guardaría; no guarda nada."""
+        ctx = self.ctx()
+        if not archivos:
+            raise ErrorUsuario("Arrastrá al menos un archivo (PDF, Excel o CSV).")
+        with tempfile.TemporaryDirectory() as tmp:
+            rutas = []
+            for i, (nombre, contenido) in enumerate(archivos):
+                seguro = Path(nombre).name or f"archivo{i}"  # solo el nombre: nunca una ruta
+                destino = Path(tmp) / f"{i}-{seguro}"
+                destino.write_bytes(contenido)
+                rutas.append(destino)
+            lecturas, mis = importacion.leer_rutas(rutas)
+        for x in lecturas:  # el nombre original, sin el prefijo del temporal
+            if isinstance(x, FacturaLeida | NoReconocido):
+                x.archivo = re.sub(r"^\d+-", "", x.archivo)
+        plan = importacion.planear(ctx, lecturas, mis)
+        pendiente = None
+        if plan.hay_algo_para_guardar:
+            pendiente = ctx.importaciones.crear(
+                ctx.perfil_nombre,
+                ctx.ambiente,
+                importacion.a_payload(lecturas, mis),
+                self._ahora(),
+            )
+        return VistaImportacion(
+            plan=plan,
+            importacion_id=pendiente.id if pendiente else "",
+            vence=pendiente.vence.strftime("%H:%M") if pendiente else "",
+            ambiente=ctx.nombre_ambiente,
+        )
+
+    def confirmar_importacion(self, importacion_id: str) -> str:
+        ctx = self.ctx()
+        p = ctx.importaciones.obtener(importacion_id)
+        if p is None:
+            raise ErrorUsuario("Esa importación ya no existe. Arrastrá los archivos de nuevo.")
+        if p.vencida(self._ahora()):
+            raise ErrorUsuario(
+                "La importación venció (duran 15 minutos). Arrastrá los archivos de nuevo."
+            )
+        if p.ambiente != ctx.ambiente or p.perfil != ctx.perfil_nombre:
+            raise ErrorUsuario("Cambió el perfil o el ambiente: arrastrá los archivos de nuevo.")
+        lecturas, mis = importacion.de_payload(p.datos)
+        res = importacion.aplicar(ctx, importacion.planear(ctx, lecturas, mis))
+        ctx.importaciones.borrar(p.id)
+        return f"Listo: {res.texto()}."
 
     # --- ajustes ---------------------------------------------------------------------------
 

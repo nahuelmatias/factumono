@@ -20,7 +20,7 @@ from factumono import __version__, config, migracion
 from factumono.arca import ambientes
 from factumono.arca.errors import ArcaError, traducir_error_red
 from factumono.contexto import Contexto, construir
-from factumono.core import armado, money, service
+from factumono.core import armado, importacion, money, service
 from factumono.core import cuit as cuit_mod
 from factumono.core.diagnostico import (
     Diagnostico,
@@ -765,21 +765,28 @@ def emitir(
                     )
                 )
             else:
-                if precio_dec is None:
+                plantilla = armado.items_de_plantilla(cli)
+                if precio_dec is None and not plantilla:
                     raise ValueError("Falta --precio (o usá --repetir-ultima).")
-                item = armado.item_de_cliente(cli, precio_dec, descripcion)
-                item = replace(
-                    item,
-                    cantidad=Decimal(money.parsear(cantidad)),
-                    unidad=unidad or cli.unidad,
-                    codigo=codigo,
-                )
+                if precio_dec is None:
+                    items_c = plantilla  # sin precio: los ítems de la plantilla del cliente
+                    typer.echo(f"Uso la plantilla de «{cli.alias}» ({len(plantilla)} ítem/s).")
+                else:
+                    item = armado.item_de_cliente(cli, precio_dec, descripcion)
+                    items_c = (
+                        replace(
+                            item,
+                            cantidad=Decimal(money.parsear(cantidad)),
+                            unidad=unidad or cli.unidad,
+                            codigo=codigo,
+                        ),
+                    )
                 c = armado.armar_comprobante(
                     perfil=ctx.perfil,
                     punto_venta=pv,
                     cbte_tipo=FACTURA_C,
                     receptor=armado.receptor_de_cliente(ctx.wsfe, cli),
-                    items=(item,),
+                    items=items_c,
                     concepto=concepto or cli.concepto,
                     hoy=hoy,
                     desde=p_desde,
@@ -926,7 +933,7 @@ def historial(
                 f"{r.id:>4}  {fecha_ar(r.fecha):<10}  {marca_amb:<4}  "
                 f"{_nombre_corto(r.cbte_tipo, r.punto_venta, r.numero):<19}  "
                 f"{r.receptor_nombre[:24]:<24}  {money.formatear_ar(r.importe):>16}  "
-                f"{r.estado:<10}  {r.cae}"
+                f"{r.estado + ('*' if r.externo else ''):<10}  {r.cae}"
             )
         sin_resolver = [r for r in filas if r.estado in ("pendiente", "incierto")]
         if sin_resolver:
@@ -1102,6 +1109,63 @@ def configurar(
         for amb in ("homo", "prod"):
             typer.echo(f"Historial {amb}:".ljust(16) + str(config.ruta_historial(amb)))
         typer.echo(f"Configuración:  {config.ruta_config()}")
+
+    _ejecutar(run)
+
+
+@app.command()
+def importar(
+    rutas: Annotated[
+        list[Path] | None,
+        typer.Argument(
+            help="PDF de facturas viejas, carpetas con PDF, o el Excel/CSV de «Mis Comprobantes»."
+        ),
+    ] = None,
+    perfil: PerfilOpt = None,
+    ambiente: AmbienteOpt = None,
+    texto: Annotated[
+        bool, typer.Option("--texto", help="Muestra el texto crudo de lo que no se reconoce.")
+    ] = False,
+    sin_historico: Annotated[
+        bool,
+        typer.Option(
+            "--sin-historico",
+            help="Solo crea/actualiza clientes y plantillas; no registra comprobantes históricos.",
+        ),
+    ] = False,
+    yes: Annotated[bool, typer.Option("--yes", help="No pregunta (para scripts).")] = False,
+    probar: Annotated[
+        bool, typer.Option("--probar", help="Autochequeo del lector (para el smoke test).")
+    ] = False,
+) -> None:
+    """Importa facturas anteriores: crea/actualiza clientes con su plantilla y registra el
+    historial externo (cuenta para el tope del monotributo).
+
+    Lee los PDF de ARCA («Comprobantes en línea») y los de Factumono de forma determinística y
+    valida el QR. Muestra qué haría y pide confirmación antes de guardar.
+    """
+
+    def run() -> None:
+        if probar:
+            typer.echo(importacion.autochequeo())
+            return
+        if not rutas:
+            raise ValueError("Indicá al menos un PDF, una carpeta o un Excel/CSV para importar.")
+        ctx = _contexto(perfil, ambiente)
+        lecturas, mis = importacion.leer_rutas(rutas)
+        plan = importacion.planear(ctx, lecturas, mis, registrar_historico=not sin_historico)
+        typer.echo(plan.texto())
+        if texto:
+            for n in plan.no_reconocidos:
+                typer.echo(f"\n--- texto crudo de {n.archivo} ---\n{n.texto or '(sin texto)'}")
+        if not plan.hay_algo_para_guardar:
+            typer.echo("\nNo hay nada para guardar.")
+            return
+        typer.echo(f"\nSe guardaría en el ambiente: {ctx.nombre_ambiente}.")
+        if not yes and not _confirmar("¿Guardar?"):
+            typer.echo("Cancelado: no se guardó nada.")
+            return
+        typer.secho(f"✓ {importacion.aplicar(ctx, plan).texto()}.", fg=typer.colors.GREEN)
 
     _ejecutar(run)
 

@@ -1,0 +1,81 @@
+{% set plan = v.plan %}
+<section class="tarjeta" aria-label="Lo que se detectó">
+  <h2 style="margin-top:0">Esto es lo que detecté</h2>
+
+  {% for a in plan.archivos %}
+  <article class="tarjeta" style="box-shadow:none">
+    <h3 style="margin-top:0">📄 {{ a.nombre }}</h3>
+    {% if a.factura %}
+      {% set f = a.factura %}
+      <p><strong>{{ f.receptor_nombre or "?" }}</strong>
+        {% if f.receptor_doc_nro %} — {{ f.receptor_doc_nro }}{% endif %}
+        {% if f.receptor_condicion_iva %} — {{ f.receptor_condicion_iva }}{% endif %}</p>
+      {% if f.receptor_domicilio %}<p class="suave">{{ f.receptor_domicilio }}</p>{% endif %}
+      <p class="suave">
+        Comprobante {{ "%05d" % f.punto_venta if f.punto_venta is not none }}-{{ "%08d" % f.numero if f.numero is not none }}
+        · {{ f.fecha.strftime("%d/%m/%Y") if f.fecha else "?" }}
+        {% if f.periodo_desde %}· Período {{ f.periodo_desde.strftime("%d/%m/%Y") }} al {{ f.periodo_hasta.strftime("%d/%m/%Y") }}{% endif %}
+        {% if f.vto_pago %}· Vence {{ f.vto_pago.strftime("%d/%m/%Y") }}{% endif %}
+        · {{ f.condicion_venta }}</p>
+      {% if f.items %}
+      <table>
+        <thead><tr><th>Cód.</th><th>Detalle</th><th>Cant.</th><th>Unidad</th><th class="der">Precio</th><th class="der">Bonif.</th><th class="der">Subtotal</th></tr></thead>
+        <tbody>
+        {% for i in f.items %}
+          <tr><td>{{ i.codigo }}</td><td>{{ i.descripcion }}</td><td>{{ i.cantidad }}</td><td>{{ i.unidad }}</td>
+              <td class="der">{{ pesos(i.precio_unitario) }}</td><td class="der">{{ i.bonificacion_pct }} %</td><td class="der">{{ pesos(i.subtotal) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+      <p><strong>Total {{ pesos(f.total) if f.total is not none else "?" }}</strong> ·
+        {% if f.inconsistente %}<span class="etiqueta rojo">el QR no coincide</span>
+        {% elif f.qr %}<span class="etiqueta">QR leído y coincide ✓</span>
+        {% else %}<span class="etiqueta">sin QR</span>{% endif %}</p>
+    {% endif %}
+    {% if a.cliente %}
+      <div class="info">
+        {% if a.cliente.accion == "crear" %}➕ Voy a <strong>crear el cliente</strong> «{{ a.cliente.cliente.alias }}» con su plantilla de ítems.
+        {% elif a.cliente.accion == "actualizar" %}🔄 Voy a <strong>actualizar</strong> al cliente «{{ a.cliente.cliente.alias }}»: {{ a.cliente.cambios | join(", ") }}.
+        {% else %}✔️ El cliente «{{ a.cliente.cliente.alias }}» ya está igual.{% endif %}
+      </div>
+    {% endif %}
+    {% if a.comprobante %}
+      <div class="{{ 'info' if a.comprobante.accion != 'omitir' else 'aviso' }}">
+        {% if a.comprobante.accion == "registrar" %}📚 Lo voy a <strong>sumar a tu historial</strong> como factura externa (no la emitió Factumono): cuenta para tu tope.
+        {% elif a.comprobante.accion == "ya_estaba" %}✔️ Esta factura ya estaba en tu historial.
+        {% else %}No la sumo al historial: {{ a.comprobante.motivo }}.{% endif %}
+        {% if a.comprobante.accion == "registrar" and a.comprobante.motivo %}<br><small>({{ a.comprobante.motivo }})</small>{% endif %}
+      </div>
+    {% endif %}
+    {% for x in a.avisos %}<div class="aviso">⚠️ {{ x }}</div>{% endfor %}
+  </article>
+  {% endfor %}
+
+  {% for n in plan.no_reconocidos %}
+  <article class="tarjeta" style="box-shadow:none">
+    <h3 style="margin-top:0">❓ {{ n.archivo }}</h3>
+    <div class="aviso">No lo pude leer solo: {{ n.motivo }}</div>
+    <p class="suave">Si usás Claude Desktop, pedile que lo interprete («importá esta factura»): con el texto crudo puede cargar el cliente y su plantilla.</p>
+    {% if n.texto %}<details class="crudo"><summary>Ver el texto crudo</summary><pre>{{ n.texto }}</pre></details>{% endif %}
+  </article>
+  {% endfor %}
+
+  {% if plan.mis_comprobantes %}
+    {% set nuevos = plan.mis_comprobantes | selectattr("accion", "equalto", "registrar") | list %}
+    {% set ya = plan.mis_comprobantes | selectattr("accion", "equalto", "ya_estaba") | list %}
+    <div class="info">📊 «Mis Comprobantes»: <strong>{{ nuevos | length }}</strong> comprobante(s) para sumar al historial
+      ({{ pesos(nuevos | sum(attribute="total")) }}), {{ ya | length }} que ya estaban.</div>
+    {% for x in plan.avisos_mis_comprobantes %}<div class="aviso">⚠️ {{ x }}</div>{% endfor %}
+  {% endif %}
+
+  {% if v.importacion_id %}
+  <form hx-post="/importar/confirmar" hx-target="#resultado" hx-indicator="#resultado">
+    <input type="hidden" name="importacion_id" value="{{ v.importacion_id }}">
+    <p class="suave">Se guarda en: <strong>{{ v.ambiente }}</strong>. Esta pantalla vence a las {{ v.vence }}.</p>
+    <div class="acciones"><button type="submit" class="grande">Guardar</button> <a class="boton suave" href="/importar">Cancelar</a></div>
+  </form>
+  {% else %}
+  <div class="info">No hay nada para guardar con estos archivos.</div>
+  {% endif %}
+</section>

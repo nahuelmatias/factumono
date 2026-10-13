@@ -10,6 +10,7 @@ from factumono.core.models import Comprobante, Credencial, Perfil
 from factumono.storage.borradores import Borradores
 from factumono.storage.clientes import Clientes
 from factumono.storage.historial import Historial, Registro
+from factumono.storage.importaciones import Importaciones
 
 
 @dataclass
@@ -24,6 +25,7 @@ class Contexto:
     historial: Historial | None = None
     clientes: Clientes = field(default_factory=Clientes)
     borradores: Borradores = field(default_factory=Borradores)
+    importaciones: Importaciones = field(default_factory=Importaciones)
 
     @property
     def es_produccion(self) -> bool:

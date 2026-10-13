@@ -5,7 +5,12 @@ import logging
 from mcp.server.mcpserver import MCPServer
 
 from factumono import __version__
-from factumono.mcp.herramientas import Herramientas, ItemEntrada, ReceptorEntrada
+from factumono.mcp.herramientas import (
+    Herramientas,
+    ItemEntrada,
+    PlantillaEntrada,
+    ReceptorEntrada,
+)
 
 INSTRUCCIONES = """\
 Factumono emite comprobantes electrónicos de ARCA (ex AFIP) desde la máquina del usuario.
@@ -23,7 +28,11 @@ informativos: mencionáselos, pero no piden ninguna confirmación extra.
 4. Siempre aclarale al usuario el ambiente (🧪 HOMOLOGACIÓN = pruebas sin validez fiscal, \
 ⚠️ PRODUCCIÓN = comprobante con validez fiscal real). Lo indica cada respuesta. El ambiente solo \
 se cambia desde la terminal (`factumono ambiente usar`); vos no podés cambiarlo.
-5. Los borradores vencen a los 15 minutos. Los importes se escriben como el usuario los diga \
+5. Importar facturas anteriores (`importar_factura`, `guardar_plantilla`) también es en dos pasos: \
+primero un preview con `importacion_id` y recién después `confirmar_importacion` con \
+`confirmo=true`, solo si el usuario dijo explícitamente que sí. Si un PDF no se reconoce, \
+interpretalo vos y cargalo con `guardar_plantilla`; nunca inventes datos que no estén en el texto.
+6. Los borradores vencen a los 15 minutos. Los importes se escriben como el usuario los diga \
 (por ejemplo "1.093.843,20").
 """
 
@@ -102,6 +111,35 @@ def crear_servidor(herramientas: Herramientas | None = None) -> MCPServer:
         no (por ejemplo, emitidos desde otra PC). Solo lee de ARCA y escribe el historial local:
         NO emite nada. ARCA guarda solo los totales (sin ítems ni datos del receptor)."""
         return h.recuperar_comprobantes(perfil)
+
+    @servidor.tool()
+    def importar_factura(ruta: str, perfil: str | None = None) -> str:
+        """Lee una factura anterior de forma determinística: un PDF de ARCA («Comprobantes en
+        línea») o de Factumono, una carpeta con PDF, o el Excel/CSV de «Mis Comprobantes». Extrae
+        emisor, receptor, concepto, período, vencimiento, condición de venta e ítems, decodifica el
+        QR y lo usa para validar los datos duros. PREPARA qué se guardaría (cliente + plantilla y,
+        si el emisor es el perfil, el comprobante como histórico externo para el tope del
+        monotributo) y devuelve `importacion_id`: NO guarda nada. Si el archivo no se reconoce
+        (no es de ARCA o es una imagen), devuelve el texto crudo para que lo interpretes y lo
+        cargues con `guardar_plantilla`."""
+        return h.importar_factura(ruta, perfil)
+
+    @servidor.tool()
+    def guardar_plantilla(datos: PlantillaEntrada, perfil: str | None = None) -> str:
+        """Prepara guardar como cliente + plantilla los datos que VOS extrajiste de una factura
+        que `importar_factura` no pudo leer (nombre, CUIT o DNI, condición IVA, domicilio,
+        concepto 1/2/3, ítems con descripción, cantidad, unidad y precio). Devuelve un preview y
+        `importacion_id`: NO guarda nada hasta `confirmar_importacion`."""
+        return h.guardar_plantilla(datos, perfil)
+
+    @servidor.tool()
+    def confirmar_importacion(
+        importacion_id: str, confirmo: bool = False, perfil: str | None = None
+    ) -> str:
+        """Guarda lo que `importar_factura` o `guardar_plantilla` prepararon. Exige
+        `confirmo=true`, que SOLO podés pasar si el usuario vio el preview y dijo explícitamente
+        que sí."""
+        return h.confirmar_importacion(importacion_id, confirmo, perfil)
 
     @servidor.tool()
     def preparar_comprobante(

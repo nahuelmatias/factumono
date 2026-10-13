@@ -369,6 +369,29 @@ def crear_app(
     ) -> HTMLResponse:
         return parcial(request, "_preview.html", v=svc.preparar_nota_de_credito(id_, motivo))
 
+    # --- importar facturas viejas --------------------------------------------------------------
+
+    @app.get("/importar", response_class=HTMLResponse)
+    def importar(request: Request) -> HTMLResponse:
+        return pagina(request, "importar.html", seccion="importar", resumen=svc.resumen())
+
+    @app.post("/importar/analizar", response_class=HTMLResponse)
+    async def importar_analizar(
+        request: Request, archivos: Annotated[list[UploadFile] | None, File()] = None
+    ) -> HTMLResponse:
+        leidos = [(a.filename or "", await a.read()) for a in (archivos or []) if a.filename]
+        if sum(len(c) for _, c in leidos) > 60 * 1024 * 1024:
+            raise ErrorUsuario("Los archivos pesan demasiado (más de 60 MB en total).")
+        return parcial(
+            request, "_importacion.html", v=svc.analizar_importacion(leidos), pesos=pesos
+        )
+
+    @app.post("/importar/confirmar", response_class=HTMLResponse)
+    def importar_confirmar(
+        request: Request, importacion_id: Annotated[str, Form()]
+    ) -> HTMLResponse:
+        return parcial(request, "_ok.html", mensaje=svc.confirmar_importacion(importacion_id))
+
     # --- clientes ----------------------------------------------------------------------------
 
     @app.get("/clientes", response_class=HTMLResponse)

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block titulo %}Factumono · Facturas viejas{% endblock %}
+{% block contenido %}
+<h1>Arrastrá una factura vieja</h1>
+<p>Factumono lee tus facturas anteriores y guarda al cliente con sus datos y sus ítems, para que la próxima
+  la hagas en dos clicks. También suma lo que ya facturaste al cálculo de tu tope de monotributo.</p>
+
+<form class="tarjeta" hx-post="/importar/analizar" hx-encoding="multipart/form-data" hx-target="#resultado" hx-indicator="#resultado">
+  <div class="zona">
+    <strong>📄 Soltá acá los PDF de tus facturas</strong>
+    <p class="suave">Los de «Comprobantes en línea» de ARCA o los de Factumono. También sirve el Excel o el CSV de
+      «Mis Comprobantes → Emitidos».</p>
+    <input type="file" name="archivos" multiple accept=".pdf,.xlsx,.xlsm,.csv" required>
+  </div>
+  <div class="acciones"><button type="submit" class="grande">Leer las facturas</button></div>
+  <small>No se guarda nada hasta que veas lo que se detectó y confirmes.</small>
+</form>
+<div id="resultado"></div>
+{% endblock %}

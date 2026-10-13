@@ -126,3 +126,8 @@ pre { background: var(--fondo); border: 1px solid var(--linea); border-radius: 1
 
 fieldset.grupo { border: 2px solid var(--linea); border-radius: 12px; margin: 1rem 0 0; padding: 0.4rem 1rem 0.6rem; }
 fieldset.grupo legend { font-weight: 700; padding: 0 0.4rem; }
+
+.zona { border: 3px dashed var(--dorado); border-radius: var(--radio); padding: 1.6rem; text-align: center; background: var(--dorado-claro); }
+.zona input[type="file"] { border: none; background: transparent; padding: 0.4rem; }
+.zona strong { font-size: 1.25rem; }
+details.crudo pre { max-height: 18rem; }
