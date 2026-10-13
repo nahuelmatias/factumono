@@ -1,7 +1,7 @@
 <section class="tarjeta" aria-label="Vista previa del comprobante">
   <h2 style="margin-top:0">{{ v.titulo }} <small>· Nro. {{ v.numero }} (estimado)</small></h2>
   <p><strong>{{ v.receptor }}</strong> — {{ v.receptor_doc }} — {{ v.condicion_iva }}</p>
-  <p class="suave">Emite: {{ v.emisor }} · Fecha: {{ v.fecha }}
+  <p class="suave">Concepto: <strong>{{ v.concepto }}</strong> · Emite: {{ v.emisor }} · Fecha: {{ v.fecha }}
     {% if v.periodo %}· Período: {{ v.periodo }}{% endif %}
     {% if v.vto_pago %}· Vence: {{ v.vto_pago }}{% endif %}</p>
   {% if v.anula %}<div class="aviso">Anula la <strong>{{ v.anula }}</strong>. Motivo: {{ v.motivo }}</div>{% endif %}

@@ -13,12 +13,15 @@ from decimal import Decimal
 from typing import Protocol
 
 from factumono.core.models import (
+    CONCEPTO_TEXTO,
     Cliente,
     Comprobante,
     Concepto,
     Item,
     Perfil,
     Receptor,
+    parsear_concepto,
+    parsear_modo_periodo,
 )
 from factumono.storage.historial import Historial, Registro
 
@@ -108,6 +111,54 @@ def periodo_siguiente(desde: date, hasta: date) -> tuple[date, date]:
     return sumar_mes(desde), sumar_mes(hasta)
 
 
+def resolver_periodo(
+    modo: str,
+    concepto: Concepto,
+    hoy: date,
+    desde: date | None = None,
+    hasta: date | None = None,
+) -> tuple[date, date] | None:
+    """El período facturado según el modo del cliente (o el que se indique explícitamente).
+
+    - Productos: no llevan período (None).
+    - Si se indican desde y hasta, ese rango gana sobre el modo.
+    - mes_completo / auto: el mes en curso. dia_emision: solo el día de emisión.
+    - rango: hay que indicar desde y hasta. sin_periodo: no corresponde a servicios.
+    """
+    if concepto == Concepto.PRODUCTOS:
+        return None
+    if (desde is None) != (hasta is None):
+        raise ValueError("Indicá las dos fechas del período (desde y hasta), o ninguna.")
+    if desde is not None and hasta is not None:
+        if hasta < desde:
+            raise ValueError("El fin del período no puede ser anterior al inicio.")
+        return desde, hasta
+    modo = parsear_modo_periodo(modo)
+    if modo == "dia_emision":
+        return hoy, hoy
+    if modo == "rango":
+        raise ValueError("Este cliente se factura por rango de fechas: indicá desde y hasta.")
+    if modo == "sin_periodo":
+        raise ValueError(
+            "Los servicios necesitan período (ARCA lo exige). Este cliente está en «sin período»: "
+            "cambialo a mes completo, día de emisión o rango, o facturá productos."
+        )
+    return hoy.replace(day=1), fin_de_mes(hoy)  # mes_completo y auto
+
+
+def validar_modo_y_concepto(modo: str, concepto: "str | int | Concepto") -> tuple[str, str]:
+    """Normaliza (modo, concepto) de un cliente y rechaza la combinación imposible: sin período
+    solo vale para productos (ARCA exige período en servicios y en productos y servicios)."""
+    m = parsear_modo_periodo(modo)
+    c = parsear_concepto(concepto)
+    if m == "sin_periodo" and c != Concepto.PRODUCTOS:
+        raise ValueError(
+            "«Sin período» solo vale para productos: los servicios (y productos y servicios) "
+            "necesitan período."
+        )
+    return m, CONCEPTO_TEXTO[c]
+
+
 def receptor_de_cliente(wsfe: _ResuelveCondicion, c: Cliente, clase: str = "C") -> Receptor:
     cond = wsfe.resolver_condicion_iva(c.condicion_iva, clase)
     return Receptor(
@@ -127,32 +178,32 @@ def armar_comprobante(
     cbte_tipo: int,
     receptor: Receptor,
     items: tuple[Item, ...],
-    concepto: str,
+    concepto: "str | int | Concepto",
     hoy: date,
     desde: date | None = None,
     hasta: date | None = None,
     vto_pago: date | None = None,
     vto_dias: int = 4,
     condicion_venta: str = "Contado",
+    modo_periodo: str = "mes_completo",
 ) -> Comprobante:
-    es_servicio = concepto.lower().startswith("serv")
-    if not es_servicio and not concepto.lower().startswith("prod"):
-        raise ValueError("El concepto debe ser 'servicios' o 'productos'.")
+    conc = parsear_concepto(concepto)
     c = Comprobante(
         perfil=perfil,
         punto_venta=punto_venta,
         cbte_tipo=cbte_tipo,
-        concepto=Concepto.SERVICIOS if es_servicio else Concepto.PRODUCTOS,
+        concepto=conc,
         receptor=receptor,
         items=items,
         fecha=hoy,
         condicion_venta=condicion_venta,
     )
-    if es_servicio:
+    periodo = resolver_periodo(modo_periodo, conc, hoy, desde, hasta)
+    if periodo:  # servicios (2) y productos y servicios (3): período y vencimiento obligatorios
         c = replace(
             c,
-            periodo_desde=desde or hoy.replace(day=1),
-            periodo_hasta=hasta or fin_de_mes(hoy),
+            periodo_desde=periodo[0],
+            periodo_hasta=periodo[1],
             vto_pago=vto_pago or hoy + timedelta(days=vto_dias),
         )
     c.validar()
@@ -179,6 +230,24 @@ def ultima_factura(historial: Historial, cuit: str, ambiente: str, c: Cliente) -
     return r
 
 
+def _periodo_de_la_de_siempre(modo: str, o: Comprobante, hoy: date) -> tuple[date, date]:
+    assert o.periodo_desde and o.periodo_hasta
+    if modo == "dia_emision":
+        return hoy, hoy
+    if modo == "rango":
+        return sumar_mes(o.periodo_desde), sumar_mes(o.periodo_hasta)
+    if modo == "mes_completo":
+        # el mes siguiente al último facturado, siempre completo (aunque la última no lo fuera)
+        siguiente = sumar_mes(o.periodo_hasta.replace(day=1))
+        return mes_completo(siguiente.year, siguiente.month)
+    if modo == "sin_periodo":
+        raise ValueError(
+            "La última factura es de servicios (lleva período) pero este cliente está en «sin "
+            "período». Cambiá el modo del cliente."
+        )
+    return periodo_siguiente(o.periodo_desde, o.periodo_hasta)  # auto
+
+
 def repetir_ultima(
     ultima: Registro,
     *,
@@ -187,8 +256,14 @@ def repetir_ultima(
     desde: date | None = None,
     hasta: date | None = None,
     vto_dias: int = 4,
+    modo: str = "auto",
 ) -> Comprobante:
-    """La misma factura que `ultima`, con el período corrido (o el indicado) y fecha de hoy."""
+    """La misma factura que `ultima`, con el período corrido (o el indicado) y fecha de hoy.
+
+    El período nuevo depende del modo del cliente: mes completo → el mes siguiente al último
+    facturado; día de emisión → hoy; rango → el mismo rango un mes después; sin período → ninguno
+    (solo productos); auto → se deduce de la última factura.
+    """
     o = ultima.comprobante
     items = o.items
     if importe is not None:
@@ -200,8 +275,10 @@ def repetir_ultima(
         items = (replace(items[0], precio_unitario=importe),)
     if o.concepto == Concepto.PRODUCTOS or not (o.periodo_desde and o.periodo_hasta):
         return replace(o, items=items, fecha=hoy, extras={})
+    if (desde is None) != (hasta is None):
+        raise ValueError("Indicá las dos fechas del período (desde y hasta), o ninguna.")
     if desde is None or hasta is None:
-        desde, hasta = periodo_siguiente(o.periodo_desde, o.periodo_hasta)
+        desde, hasta = _periodo_de_la_de_siempre(parsear_modo_periodo(modo), o, hoy)
     espera = (o.vto_pago - o.fecha).days if o.vto_pago else vto_dias
     return replace(
         o,

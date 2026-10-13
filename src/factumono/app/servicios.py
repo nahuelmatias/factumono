@@ -26,12 +26,15 @@ from factumono.core.diagnostico import Diagnostico, diagnosticar, problemas_para
 from factumono.core.fechas import mostrar as fecha_ar
 from factumono.core.models import (
     NOMBRES_COMPROBANTE,
+    NOMBRES_CONCEPTO,
     Cliente,
     Comprobante,
     Concepto,
     DocTipo,
     Item,
     Receptor,
+    parsear_concepto,
+    parsear_modo_periodo,
 )
 from factumono.core.sincronia import Brecha, brechas, recuperar_brechas, total_faltantes
 from factumono.mcp import instalar as mcp_instalar
@@ -105,6 +108,7 @@ class VistaPreview:
     receptor: str
     receptor_doc: str
     condicion_iva: str
+    concepto: str
     fecha: str
     periodo: str | None
     vto_pago: str | None
@@ -300,9 +304,11 @@ class Servicios:
         email: str = "",
         descripcion: str = "",
         unidad: str = "otras unidades",
-        concepto: str = "servicios",
+        concepto: str = "2",
         vto_dias: int = 4,
         reemplazar: bool = False,
+        modo_periodo: str = "mes",
+        condicion_venta: str = "Contado",
     ) -> Cliente:
         ctx = self.ctx()
         alias = alias.strip() or nombre.strip().split(" ")[0]
@@ -320,6 +326,11 @@ class Servicios:
             raise ErrorUsuario("Poné un CUIT (11 números) o un DNI (7 u 8 números).")
         if condicion_iva not in CONDICIONES_RECEPTOR:
             raise ErrorUsuario("Elegí la condición frente al IVA del cliente.")
+        try:
+            modo, conc = armado.validar_modo_y_concepto(modo_periodo, concepto)
+        except ValueError as e:
+            raise ErrorUsuario(str(e)) from None
+        previo = ctx.clientes.buscar(ctx.perfil_nombre, alias) if reemplazar else None
         c = Cliente(
             alias=alias,
             nombre=nombre.strip(),
@@ -330,8 +341,11 @@ class Servicios:
             email=email.strip(),
             descripcion=descripcion.strip(),
             unidad=unidad.strip() or "otras unidades",
-            concepto="productos" if concepto.lower().startswith("prod") else "servicios",
+            concepto=conc,
             vto_dias=vto_dias,
+            modo_periodo=modo,
+            condicion_venta=condicion_venta.strip() or "Contado",
+            plantilla=previo.plantilla if previo else "",
         )
         ctx.clientes.guardar(ctx.perfil_nombre, c, reemplazar=reemplazar)
         return c
@@ -426,19 +440,28 @@ class Servicios:
         periodo: str = "",
         vto_pago: str = "",
         repetir: bool = False,
-        concepto: str = "servicios",
+        concepto: str = "",
+        modo_periodo: str = "",
+        desde: str = "",
+        hasta: str = "",
     ) -> VistaPreview:
         ctx = self.ctx()
         assert ctx.historial
         hoy = self.hoy
         if not ctx.perfil.punto_venta:
             raise ErrorUsuario("Falta el punto de venta del perfil (Ajustes).")
-        desde = hasta = None
-        if periodo.strip():
-            try:
-                desde, hasta = armado.parsear_periodo(periodo.strip(), hoy)
-            except ValueError as e:
-                raise ErrorUsuario(str(e)) from None
+        cli: Cliente | None = None
+        if cliente != CONSUMIDOR_FINAL:
+            cli = ctx.clientes.buscar(ctx.perfil_nombre, cliente)
+            if cli is None:
+                raise ErrorUsuario("Elegí un cliente de la lista.")
+        try:
+            conc = parsear_concepto(concepto or (cli.concepto if cli else "productos"))
+            modo = parsear_modo_periodo(modo_periodo or (cli.modo_periodo if cli else "mes"))
+            p_desde, p_hasta = self._periodo_del_formulario(modo, conc, periodo, desde, hasta, hoy)
+        except ValueError as e:
+            raise ErrorUsuario(str(e)) from None
+        desde_f, hasta_f = p_desde, p_hasta
         vto = None
         if vto_pago.strip():
             try:
@@ -456,7 +479,6 @@ class Servicios:
             if imp is None or not descripcion.strip():
                 raise ErrorUsuario("Falta el importe y qué se vendió.")
             cond = ctx.wsfe.resolver_condicion_iva("Consumidor Final", "C")
-            prod = concepto.lower().startswith("prod")
             c = armado.armar_comprobante(
                 perfil=ctx.perfil,
                 punto_venta=ctx.perfil.punto_venta,
@@ -472,16 +494,15 @@ class Servicios:
                         unidad="unidades",
                     ),
                 ),
-                concepto="productos" if prod else "servicios",
+                concepto=conc,
                 hoy=hoy,
-                desde=desde,
-                hasta=hasta,
+                desde=desde_f,
+                hasta=hasta_f,
                 vto_pago=vto,
+                modo_periodo=modo,
             )
         else:
-            cli = ctx.clientes.buscar(ctx.perfil_nombre, cliente)
-            if cli is None:
-                raise ErrorUsuario("Elegí un cliente de la lista.")
+            assert cli is not None
             if repetir:
                 try:
                     ultima = armado.ultima_factura(
@@ -493,9 +514,10 @@ class Servicios:
                     ultima,
                     hoy=hoy,
                     importe=imp,
-                    desde=desde,
-                    hasta=hasta,
+                    desde=desde_f,
+                    hasta=hasta_f,
                     vto_dias=cli.vto_dias,
+                    modo=modo,
                 )
                 if vto:
                     c = replace(c, vto_pago=vto)
@@ -514,18 +536,48 @@ class Servicios:
                     cbte_tipo=ctx.perfil.cbte_tipo_default,
                     receptor=armado.receptor_de_cliente(ctx.wsfe, cli),
                     items=(armado.item_de_cliente(cli, imp, descripcion.strip() or None),),
-                    concepto=concepto if concepto else cli.concepto,
+                    concepto=conc,
                     hoy=hoy,
-                    desde=desde,
-                    hasta=hasta,
+                    desde=desde_f,
+                    hasta=hasta_f,
                     vto_pago=vto,
                     vto_dias=cli.vto_dias,
+                    condicion_venta=cli.condicion_venta,
+                    modo_periodo=modo,
                 )
         try:
             c.validar()
         except ValueError as e:
             raise ErrorUsuario(str(e)) from None
         return self._guardar_borrador(ctx, c, nota=nota)
+
+    @staticmethod
+    def _periodo_del_formulario(
+        modo: str, concepto: Concepto, periodo: str, desde: str, hasta: str, hoy: date
+    ) -> tuple[date | None, date | None]:
+        """Lo que se completó en el formulario, según el modo. Si el modo no necesita fechas
+        (día de emisión, sin período) las ignora; `armado.resolver_periodo` valida el resto."""
+        if concepto == Concepto.PRODUCTOS:
+            return None, None
+        if modo == "rango":
+            if not desde.strip() or not hasta.strip():
+                raise ValueError("Poné las dos fechas del período (desde y hasta).")
+            return armado.parsear_fecha(desde), armado.parsear_fecha(hasta)
+        if modo in ("mes_completo", "auto") and periodo.strip():
+            p = armado.parsear_periodo(periodo.strip(), hoy)
+            return p[0], p[1]
+        return None, None
+
+    def opciones_del_cliente(self, alias: str) -> dict[str, str]:
+        """El concepto y el modo de período con los que arranca el formulario para ese cliente."""
+        if alias == CONSUMIDOR_FINAL:
+            return {"concepto": "1", "modo": "mes_completo"}
+        cli = self.cliente(alias)
+        if cli is None:
+            return {"concepto": "2", "modo": "mes_completo"}
+        conc = parsear_concepto(cli.concepto)
+        modo = "mes_completo" if cli.modo_periodo == "auto" else cli.modo_periodo
+        return {"concepto": str(int(conc)), "modo": modo}
 
     def preparar_nota_de_credito(self, id_: int, motivo: str) -> VistaPreview:
         ctx = self.ctx()
@@ -598,6 +650,7 @@ class Servicios:
             receptor=r.nombre,
             receptor_doc=doc,
             condicion_iva=r.condicion_iva,
+            concepto=NOMBRES_CONCEPTO[c.concepto],
             fecha=fecha_ar(c.fecha),
             periodo=periodo,
             vto_pago=fecha_ar(c.vto_pago) if periodo and c.vto_pago else None,

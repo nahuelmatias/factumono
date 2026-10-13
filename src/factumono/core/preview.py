@@ -4,7 +4,12 @@ import textwrap
 
 from factumono.core import cuit as cuit_mod
 from factumono.core.fechas import mostrar as _fecha
-from factumono.core.models import NOMBRES_COMPROBANTE, Comprobante, Concepto
+from factumono.core.models import (
+    NOMBRES_COMPROBANTE,
+    NOMBRES_CONCEPTO,
+    Comprobante,
+    Concepto,
+)
 from factumono.core.money import formatear_ar
 
 
@@ -31,6 +36,7 @@ def texto_preview(c: Comprobante, etiqueta_ambiente: str, numero: int, banner: s
     ]
     if r.domicilio:
         lineas.append(f"              Domicilio: {r.domicilio}")
+    lineas.append(f" Concepto: {NOMBRES_CONCEPTO[c.concepto]}")
     lineas.append(f" Condición de venta: {c.condicion_venta}")
     if c.cbte_asoc:
         a = c.cbte_asoc
@@ -104,6 +110,7 @@ def markdown_preview(
             f"- **Período facturado:** {_fecha(c.periodo_desde)} al {_fecha(c.periodo_hasta)}"
             f" · **Vto. de pago:** {_fecha(c.vto_pago)}"
         )
+    lineas.append(f"- **Concepto:** {NOMBRES_CONCEPTO[c.concepto]}")
     lineas.append(f"- **Condición de venta:** {c.condicion_venta}")
     lineas += [
         "",

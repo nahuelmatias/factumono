@@ -31,6 +31,7 @@ from factumono.core.diagnostico import (
 from factumono.core.fechas import mostrar as fecha_ar
 from factumono.core.models import (
     FACTURA_C,
+    MODOS_PERIODO,
     Cliente,
     Comprobante,
     Credencial,
@@ -675,7 +676,19 @@ def emitir(
     ] = None,
     codigo: Annotated[str, typer.Option(help="Código del ítem.")] = "1",
     concepto: Annotated[
-        str | None, typer.Option(help="'servicios' (con período) o 'productos'.")
+        str | None,
+        typer.Option(
+            help="1 = productos, 2 = servicios (con período), 3 = productos y servicios "
+            "(con período). Por defecto, el del cliente."
+        ),
+    ] = None,
+    modo_periodo: Annotated[
+        str | None,
+        typer.Option(
+            "--modo-periodo",
+            help="Cómo armar el período: mes, dia (día de emisión), rango o sin. Por defecto, "
+            "el del cliente.",
+        ),
     ] = None,
     receptor_cuit: Annotated[str | None, typer.Option(help="CUIT del receptor.")] = None,
     receptor_dni: Annotated[str | None, typer.Option(help="DNI del receptor.")] = None,
@@ -738,6 +751,7 @@ def emitir(
                     desde=p_desde,
                     hasta=p_hasta,
                     vto_dias=vto_dias if vto_dias is not None else cli.vto_dias,
+                    modo=modo_periodo or cli.modo_periodo,
                 )
                 if p_vto:
                     c = replace(c, vto_pago=p_vto)
@@ -773,6 +787,7 @@ def emitir(
                     vto_pago=p_vto,
                     vto_dias=vto_dias if vto_dias is not None else cli.vto_dias,
                     condicion_venta=condicion_venta,
+                    modo_periodo=modo_periodo or cli.modo_periodo,
                 )
         else:
             if not descripcion or precio_dec is None:
@@ -812,6 +827,7 @@ def emitir(
                 vto_pago=p_vto,
                 vto_dias=vto_dias if vto_dias is not None else 4,
                 condicion_venta=condicion_venta,
+                modo_periodo=modo_periodo or "mes",
             )
         c.validar()
         _avisar_brecha(ctx, yes)
@@ -1268,8 +1284,19 @@ def cliente_agregar(
     email: Annotated[str, typer.Option(help="Email.")] = "",
     descripcion: Annotated[str, typer.Option(help="Descripción habitual del ítem.")] = "",
     unidad: Annotated[str, typer.Option(help="Unidad habitual.")] = "otras unidades",
-    concepto: Annotated[str, typer.Option(help="'servicios' o 'productos'.")] = "servicios",
+    concepto: Annotated[
+        str, typer.Option(help="1 = productos, 2 = servicios, 3 = productos y servicios.")
+    ] = "servicios",
     vto_dias: Annotated[int, typer.Option(help="Días de vencimiento de pago.")] = 4,
+    modo_periodo: Annotated[
+        str,
+        typer.Option(
+            "--modo-periodo",
+            help="Período de sus facturas: mes (mes completo), dia (día de emisión), rango "
+            "(desde-hasta) o sin (sin período, solo productos).",
+        ),
+    ] = "mes",
+    condicion_venta: Annotated[str, typer.Option(help="Condición de venta habitual.")] = "Contado",
     perfil: PerfilOpt = None,
 ) -> None:
     """Guarda un cliente nuevo."""
@@ -1278,8 +1305,7 @@ def cliente_agregar(
         ctx = _contexto(perfil)
         if bool(cuit) == bool(dni):
             raise ValueError("Indicá el CUIT o el DNI (uno solo).")
-        if not concepto.lower().startswith(("serv", "prod")):
-            raise ValueError("--concepto debe ser 'servicios' o 'productos'.")
+        modo, concepto_guardado = armado.validar_modo_y_concepto(modo_periodo, concepto)
         _validar_condicion(ctx, condicion_iva)
         c = Cliente(
             alias=alias,
@@ -1291,8 +1317,10 @@ def cliente_agregar(
             email=email,
             descripcion=descripcion,
             unidad=unidad,
-            concepto="servicios" if concepto.lower().startswith("serv") else "productos",
+            concepto=concepto_guardado,
             vto_dias=vto_dias,
+            modo_periodo=modo,
+            condicion_venta=condicion_venta,
         )
         ctx.clientes.guardar(ctx.perfil_nombre, c)
         typer.secho(f"✓ Cliente '{alias.lower()}' guardado ({nombre}).", fg=typer.colors.GREEN)
@@ -1313,7 +1341,10 @@ def cliente_listar(perfil: PerfilOpt = None) -> None:
         for c in clientes:
             typer.echo(f"{c.alias:<12} {c.nombre}  —  {_documento(c)}  ({c.condicion_iva})")
             habitual = f"{c.descripcion or '(sin descripción)'} · {c.unidad} · {c.concepto}"
-            typer.echo(f"{'':<12} habitual: {habitual} · vto. {c.vto_dias} días")
+            periodo = MODOS_PERIODO.get(c.modo_periodo, c.modo_periodo).lower()
+            typer.echo(
+                f"{'':<12} habitual: {habitual} · período: {periodo} · vto. {c.vto_dias} días"
+            )
             if c.domicilio or c.email:
                 typer.echo(f"{'':<12} {c.domicilio}{'  ✉ ' + c.email if c.email else ''}")
 
@@ -1331,8 +1362,17 @@ def cliente_editar(
     email: Annotated[str | None, typer.Option(help="Email.")] = None,
     descripcion: Annotated[str | None, typer.Option(help="Descripción habitual.")] = None,
     unidad: Annotated[str | None, typer.Option(help="Unidad habitual.")] = None,
-    concepto: Annotated[str | None, typer.Option(help="'servicios' o 'productos'.")] = None,
+    concepto: Annotated[
+        str | None, typer.Option(help="1 = productos, 2 = servicios, 3 = productos y servicios.")
+    ] = None,
     vto_dias: Annotated[int | None, typer.Option(help="Días de vencimiento de pago.")] = None,
+    modo_periodo: Annotated[
+        str | None,
+        typer.Option("--modo-periodo", help="mes, dia, rango o sin (ver `cliente agregar`)."),
+    ] = None,
+    condicion_venta: Annotated[
+        str | None, typer.Option(help="Condición de venta habitual.")
+    ] = None,
     perfil: PerfilOpt = None,
 ) -> None:
     """Cambia los datos de un cliente (solo lo que indiques)."""
@@ -1352,6 +1392,7 @@ def cliente_editar(
                 descripcion=descripcion,
                 unidad=unidad,
                 vto_dias=vto_dias,
+                condicion_venta=condicion_venta,
             ).items()
             if v is not None
         }
@@ -1361,12 +1402,14 @@ def cliente_editar(
             cambios.update(doc_tipo=int(DocTipo.CUIT), doc_nro=int(cuit_mod.normalizar(cuit)))
         if dni:
             cambios.update(doc_tipo=int(DocTipo.DNI), doc_nro=int(dni))
-        if concepto:
-            if not concepto.lower().startswith(("serv", "prod")):
-                raise ValueError("--concepto debe ser 'servicios' o 'productos'.")
-            cambios["concepto"] = (
-                "servicios" if concepto.lower().startswith("serv") else "productos"
+        if concepto or modo_periodo:
+            modo, conc = armado.validar_modo_y_concepto(
+                modo_periodo or actual.modo_periodo, concepto or actual.concepto
             )
+            if concepto:
+                cambios["concepto"] = conc
+            if modo_periodo:
+                cambios["modo_periodo"] = modo
         if not cambios:
             raise ValueError("No indicaste nada para cambiar.")
         if condicion_iva:

@@ -65,14 +65,19 @@ def crear_servidor(herramientas: Herramientas | None = None) -> MCPServer:
         vto_dias: int = 4,
         reemplazar: bool = False,
         perfil: str | None = None,
+        modo_periodo: str | None = None,
+        condicion_venta: str | None = None,
     ) -> str:
         """Guarda (o con reemplazar=true, actualiza) un cliente. `alias` es el nombre corto con el
         que se lo nombra ("acciona"); `condicion_iva` es texto como "IVA Responsable Inscripto"
-        o "Consumidor Final"; `descripcion`, `unidad`, `concepto` ('servicios' o 'productos') y
-        `vto_dias` son los defaults para facturarle rápido."""
+        o "Consumidor Final"; `descripcion`, `unidad`, `concepto` y `vto_dias` son los defaults
+        para facturarle rápido. `concepto`: 1 = productos, 2 = servicios, 3 = productos y
+        servicios (2 y 3 llevan período). `modo_periodo`: 'mes' (mes completo), 'dia' (día de
+        emisión), 'rango' (desde-hasta, se indica al facturar) o 'sin' (sin período; solo
+        productos)."""
         return h.guardar_cliente(
             alias, nombre, condicion_iva, cuit, dni, domicilio, email, descripcion, unidad,
-            concepto, vto_dias, reemplazar, perfil,
+            concepto, vto_dias, reemplazar, perfil, modo_periodo, condicion_venta,
         )  # fmt: skip
 
     @servidor.tool()
@@ -111,6 +116,7 @@ def crear_servidor(herramientas: Herramientas | None = None) -> MCPServer:
         vto_pago: str | None = None,
         repetir_ultima: bool = False,
         condicion_venta: str = "Contado",
+        modo_periodo: str | None = None,
     ) -> str:
         """PREPARA una factura (no emite nada ni toca ARCA, salvo para ver el próximo número) y
         devuelve un preview + `borrador_id`. Mostrale el preview completo al usuario.
@@ -125,10 +131,15 @@ def crear_servidor(herramientas: Herramientas | None = None) -> MCPServer:
           (descripcion, cantidad, unidad, precio_unitario).
         `periodo` acepta "septiembre", "septiembre 2026", "09/2026" o "01/09/2026 al 30/09/2026"
         y solo aplica a servicios. `vto_pago` es DD/MM/AAAA. El tipo (A/B/C) se infiere del
-        emisor."""
+        emisor.
+
+        `concepto`: 1 = productos, 2 = servicios, 3 = productos y servicios (2 y 3 exigen período).
+        `modo_periodo` (si no se indica, el del cliente): 'mes' = mes completo, 'dia' = día de
+        emisión, 'rango' = el `periodo` indicado como rango, 'sin' = sin período (solo productos).
+        "La de siempre" respeta el modo del cliente."""
         return h.preparar_comprobante(
             perfil, cliente, receptor, None, concepto, items, importe, descripcion, periodo,
-            vto_pago, repetir_ultima, condicion_venta,
+            vto_pago, repetir_ultima, condicion_venta, modo_periodo,
         )  # fmt: skip
 
     @servidor.tool()

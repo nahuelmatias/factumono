@@ -1,0 +1,18 @@
+{% if concepto == "1" or modo == "sin_periodo" %}
+  <div class="info">{% if concepto == "1" %}Los productos no llevan período.{% else %}Esta factura sale sin período (solo vale para productos).{% endif %}</div>
+  {% if concepto != "1" %}<div class="error">Los servicios necesitan período: elegí otra opción.</div>{% endif %}
+{% elif modo == "dia_emision" %}
+  <div class="info">El período es solo el día de emisión: hoy, {{ hoy }}.</div>
+{% elif modo == "rango" %}
+  <div class="dos">
+    <div><label for="desde">Desde</label><input id="desde" name="desde" type="date" required></div>
+    <div><label for="hasta">Hasta</label><input id="hasta" name="hasta" type="date" required></div>
+  </div>
+{% else %}
+  <label for="periodo">Mes que facturás</label>
+  <input id="periodo" name="periodo" type="month" value="{{ periodo }}">
+{% endif %}
+{% if concepto != "1" and modo != "sin_periodo" %}
+  <label for="vto">Vencimiento del pago (opcional)</label>
+  <input id="vto" name="vto_pago" type="date">
+{% endif %}

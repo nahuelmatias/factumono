@@ -1,0 +1,19 @@
+{% if repetir %}
+  <input type="hidden" name="repetir" value="1">
+  <div class="info">Es <strong>la de siempre</strong>: repito tu última factura a este cliente y corro el período según cómo lo tengas configurado. Si el importe cambió, escribilo; si no, dejalo en blanco.</div>
+{% endif %}
+<fieldset class="grupo">
+  <legend>¿Qué estás facturando?</legend>
+  {% for valor, nombre, ayuda in conceptos %}
+    <label class="casilla">
+      <input type="radio" name="concepto" value="{{ valor }}" {{ 'checked' if concepto == valor }}
+             hx-get="/nueva/periodo" hx-trigger="change" hx-include="closest form" hx-target="#periodo-bloque">
+      <span><strong>{{ nombre }}</strong> <small class="suave">— {{ ayuda }}</small></span>
+    </label>
+  {% endfor %}
+</fieldset>
+<label for="modo_periodo">Período</label>
+<select id="modo_periodo" name="modo_periodo" hx-get="/nueva/periodo" hx-trigger="change" hx-include="closest form" hx-target="#periodo-bloque">
+  {% for valor, nombre in modos %}<option value="{{ valor }}" {{ 'selected' if modo == valor }}>{{ nombre }}</option>{% endfor %}
+</select>
+<div id="periodo-bloque">{% include "_periodo.html" %}</div>

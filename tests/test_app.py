@@ -583,3 +583,67 @@ def test_el_icono_y_los_archivos_estaticos_se_sirven(mundo: Mundo) -> None:
         "Si sos monotributista" in mundo.c.get("/acerca").text
         and "mono" in mundo.c.get("/acerca").text
     )
+
+
+# --- concepto 1/2/3 y modo de período en la GUI -----------------------------------------------
+
+
+def test_el_formulario_arranca_con_lo_habitual_del_cliente(mundo: Mundo) -> None:
+    mundo.c.post(
+        "/clientes/guardar",
+        data={
+            "nombre": "TALLER SRL", "alias": "taller", "documento": "30000000007",
+            "condicion_iva": "IVA Responsable Inscripto", "concepto": "3",
+            "modo_periodo": "dia_emision",
+        },
+    )  # fmt: skip
+    r = mundo.c.get("/nueva/opciones?cliente=taller")
+    assert 'value="3" checked' in r.text and 'value="dia_emision" selected' in r.text
+    assert "solo el día de emisión" in r.text.lower()
+    r = mundo.c.get("/nueva/opciones?cliente=acciona")
+    assert 'value="2" checked' in r.text and 'value="mes_completo" selected' in r.text
+    assert 'type="month"' in r.text
+    r = mundo.c.get(f"/nueva/opciones?cliente={CONSUMIDOR_FINAL}")
+    assert 'value="1" checked' in r.text and "no llevan período" in r.text
+    assert "Productos y servicios" in mundo.c.get("/nueva").text  # el selector claro de concepto
+
+
+def test_el_periodo_cambia_segun_el_modo_y_el_concepto(mundo: Mundo) -> None:
+    rango = mundo.c.get("/nueva/periodo?modo_periodo=rango&concepto=2").text
+    assert 'name="desde"' in rango and 'name="hasta"' in rango
+    assert "no llevan período" in mundo.c.get("/nueva/periodo?modo_periodo=rango&concepto=1").text
+    sin = mundo.c.get("/nueva/periodo?modo_periodo=sin_periodo&concepto=2").text
+    assert "necesitan período" in sin
+    assert 'type="month"' in mundo.c.get("/nueva/periodo?modo_periodo=mes_completo&concepto=3").text
+
+
+def test_preparar_con_rango_y_productos_y_servicios(mundo: Mundo) -> None:
+    r = _preparar(mundo, concepto="3", modo_periodo="rango", desde="2026-09-03", hasta="2026-09-17")
+    assert "03/09/2026 al 17/09/2026" in r.text and "Productos y servicios" in r.text
+    falta = _preparar(mundo, concepto="2", modo_periodo="rango")
+    assert "las dos fechas del período" in falta.text
+    mal = _preparar(mundo, concepto="2", modo_periodo="sin_periodo")
+    assert "necesitan período" in mal.text
+    solo_productos = _preparar(mundo, concepto="1", modo_periodo="sin_periodo")
+    assert "Período facturado" not in solo_productos.text and "Productos" in solo_productos.text
+
+
+def test_la_de_siempre_en_la_gui_respeta_el_modo_del_cliente(mundo: Mundo) -> None:
+    mundo.c.post(
+        "/clientes/guardar",
+        data={
+            "nombre": "ACCIONA IT S.R.L", "alias": "acciona", "documento": "30710581467",
+            "condicion_iva": "IVA Responsable Inscripto", "concepto": "2",
+            "modo_periodo": "dia_emision", "editando": "1", "descripcion": "Servicios",
+        },
+    )  # fmt: skip
+    mundo.c.post(
+        "/nueva/emitir",
+        data={
+            "borrador_id": _borrador(
+                _preparar(mundo, importe="500", modo_periodo="mes_completo").text
+            )
+        },
+    )
+    r = mundo.c.post("/nueva/preparar", data={"cliente": "acciona", "repetir": "1"})
+    assert "12/10/2026 al 12/10/2026" in r.text  # día de emisión (hoy en el reloj de la prueba)

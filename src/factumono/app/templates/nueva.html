@@ -2,50 +2,26 @@
 {% block titulo %}Factumono · Nueva factura{% endblock %}
 {% block contenido %}
 <h1>Nueva factura</h1>
-{% if clientes %}
 <form hx-post="/nueva/preparar" hx-target="#resultado" hx-indicator="#resultado" class="tarjeta">
   <label for="cliente">¿A quién le facturás?</label>
-  <select id="cliente" name="cliente">
+  <select id="cliente" name="cliente"
+          hx-get="/nueva/opciones" hx-trigger="change" hx-target="#opciones" hx-include="this">
     {% for c in clientes %}<option value="{{ c.alias }}" {{ 'selected' if c.alias == seleccionado }}>{{ c.nombre }}</option>{% endfor %}
-    <option value="{{ consumidor_final }}">Consumidor final (sin datos)</option>
+    <option value="{{ consumidor_final }}" {{ 'selected' if seleccionado == consumidor_final }}>Consumidor final (sin datos)</option>
   </select>
-  {% if repetir %}
-    <input type="hidden" name="repetir" value="1">
-    <div class="info">Es <strong>la de siempre</strong>: repito tu última factura a este cliente y corro el período. Si el importe cambió, escribilo; si no, dejalo en blanco.</div>
+  {% if not clientes %}
+  <div class="info">Todavía no tenés clientes guardados. <a href="/clientes/nuevo">Agregá el primero</a> para facturarle en dos clicks.</div>
   {% endif %}
+
   <label for="importe">Importe</label>
   <input id="importe" class="importe" name="importe" inputmode="decimal" placeholder="1.500,50" {{ '' if repetir else 'required' }} autofocus>
-  <div class="dos">
-    <div>
-      <label for="periodo">Período facturado (mes)</label>
-      <input id="periodo" name="periodo" type="month" value="{{ periodo }}">
-    </div>
-    <div>
-      <label for="vto">Vencimiento del pago (opcional)</label>
-      <input id="vto" name="vto_pago" type="date">
-    </div>
-  </div>
+
+  <div id="opciones">{% include "_opciones.html" %}</div>
+
   <label for="descripcion">Detalle (opcional: si lo dejás, uso el habitual del cliente)</label>
   <input id="descripcion" name="descripcion" placeholder="Servicios de consultoría">
-  <label>Qué es</label>
-  <label class="casilla"><input type="radio" name="concepto" value="servicios" checked> Servicios</label>
-  <label class="casilla"><input type="radio" name="concepto" value="productos"> Productos</label>
   <div class="acciones"><button type="submit" class="grande">Ver cómo queda</button></div>
   <small>Todavía no se emite nada: primero ves el comprobante y confirmás.</small>
 </form>
-{% else %}
-<div class="info">Todavía no tenés clientes guardados. <a href="/clientes/nuevo">Agregá el primero</a> para facturarle en dos clicks.
-  También podés facturar a consumidor final:</div>
-<form hx-post="/nueva/preparar" hx-target="#resultado" class="tarjeta">
-  <input type="hidden" name="cliente" value="{{ consumidor_final }}">
-  <label for="importe">Importe</label>
-  <input id="importe" class="importe" name="importe" inputmode="decimal" required>
-  <label for="descripcion">¿Qué vendiste?</label>
-  <input id="descripcion" name="descripcion" required>
-  <label class="casilla"><input type="radio" name="concepto" value="productos" checked> Productos</label>
-  <label class="casilla"><input type="radio" name="concepto" value="servicios"> Servicios</label>
-  <div class="acciones"><button type="submit">Ver cómo queda</button></div>
-</form>
-{% endif %}
 <div id="resultado"></div>
 {% endblock %}

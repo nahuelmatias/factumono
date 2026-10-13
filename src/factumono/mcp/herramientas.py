@@ -23,6 +23,7 @@ from factumono.core import cuit as cuit_mod
 from factumono.core.diagnostico import diagnosticar, esta_dado_de_baja
 from factumono.core.fechas import mostrar as fecha_ar
 from factumono.core.models import (
+    MODOS_PERIODO,
     NOMBRES_COMPROBANTE,
     Cliente,
     Comprobante,
@@ -281,7 +282,9 @@ class Herramientas:
                 )
                 filas.append(
                     f"| {c.alias} | {c.nombre} | {doc} | {c.condicion_iva} | "
-                    f"{c.descripcion or '—'} ({c.unidad}, {c.concepto}, vto. {c.vto_dias} días) |"
+                    f"{c.descripcion or '—'} ({c.unidad}, {c.concepto}, "
+                    f"período: {MODOS_PERIODO.get(c.modo_periodo, c.modo_periodo).lower()}, "
+                    f"vto. {c.vto_dias} días) |"
                 )
             return self._responder(ctx, "\n".join(filas))
         except _ERRORES as e:
@@ -302,6 +305,8 @@ class Herramientas:
         vto_dias: int = 4,
         reemplazar: bool = False,
         perfil: str | None = None,
+        modo_periodo: str | None = None,
+        condicion_venta: str | None = None,
     ) -> str:
         ctx = None
         try:
@@ -313,6 +318,10 @@ class Herramientas:
             else:
                 raise ValueError("Indicá el CUIT o el DNI del cliente.")
             ctx.wsfe.resolver_condicion_iva(condicion_iva, "C")  # valida la condición
+            previo = ctx.clientes.buscar(ctx.perfil_nombre, alias) if reemplazar else None
+            modo, conc = armado.validar_modo_y_concepto(
+                modo_periodo or (previo.modo_periodo if previo else "mes"), concepto
+            )
             ctx.clientes.guardar(
                 ctx.perfil_nombre,
                 Cliente(
@@ -325,9 +334,13 @@ class Herramientas:
                     email,
                     descripcion,
                     unidad,
-                    concepto,
+                    conc,
                     vto_dias,
-                ),  # fmt: skip
+                    modo_periodo=modo,
+                    condicion_venta=condicion_venta
+                    or (previo.condicion_venta if previo else "Contado"),
+                    plantilla=previo.plantilla if previo else "",  # no se pierde al reemplazar
+                ),
                 reemplazar=reemplazar,
             )
             return self._responder(ctx, f"✅ Cliente '{alias.lower()}' ({nombre}) guardado.")
@@ -490,6 +503,7 @@ class Herramientas:
         vto_pago: str | None = None,
         repetir_ultima: bool = False,
         condicion_venta: str = "Contado",
+        modo_periodo: str | None = None,
     ) -> str:
         ctx = None
         try:
@@ -522,6 +536,7 @@ class Herramientas:
                         desde=desde,
                         hasta=hasta,
                         vto_dias=cli.vto_dias,
+                        modo=modo_periodo or cli.modo_periodo,
                     )
                     if vto:
                         c = replace(c, vto_pago=vto)
@@ -557,6 +572,7 @@ class Herramientas:
                         vto_pago=vto,
                         vto_dias=cli.vto_dias,
                         condicion_venta=condicion_venta,
+                        modo_periodo=modo_periodo or cli.modo_periodo,
                     )
             else:
                 if repetir_ultima:
@@ -583,6 +599,7 @@ class Herramientas:
                     hasta=hasta,
                     vto_pago=vto,
                     condicion_venta=condicion_venta,
+                    modo_periodo=modo_periodo or "mes",
                 )
             return self._responder(ctx, self._preparar(ctx, c, nota=nota))
         except (*_ERRORES, httpx.HTTPError) as e:

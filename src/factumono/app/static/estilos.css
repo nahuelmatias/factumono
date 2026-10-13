@@ -123,3 +123,6 @@ pre { background: var(--fondo); border: 1px solid var(--linea); border-radius: 1
 .lema { font-size: 1.25rem; color: var(--dorado-oscuro); font-weight: 700; }
 .pie { text-align: center; color: var(--suave); font-size: 0.85rem; margin-top: 2rem; }
 .htmx-request { opacity: 0.6; }
+
+fieldset.grupo { border: 2px solid var(--linea); border-radius: 12px; margin: 1rem 0 0; padding: 0.4rem 1rem 0.6rem; }
+fieldset.grupo legend { font-weight: 700; padding: 0 0.4rem; }

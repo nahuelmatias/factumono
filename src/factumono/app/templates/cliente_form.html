@@ -29,8 +29,20 @@
     <div><label for="un">Unidad</label><input id="un" name="unidad" value="{{ c.unidad if c else 'otras unidades' }}"></div>
     <div><label for="vto">Vence a los (días)</label><input id="vto" name="vto_dias" type="number" min="0" value="{{ c.vto_dias if c else 4 }}"></div>
   </div>
-  <label class="casilla"><input type="radio" name="concepto" value="servicios" {{ 'checked' if not c or c.concepto == 'servicios' }}> Servicios</label>
-  <label class="casilla"><input type="radio" name="concepto" value="productos" {{ 'checked' if c and c.concepto == 'productos' }}> Productos</label>
+  <fieldset class="grupo">
+    <legend>¿Qué le facturás?</legend>
+    <label class="casilla"><input type="radio" name="concepto" value="1" {{ 'checked' if c and c.concepto == 'productos' }}> <span><strong>Productos</strong> <small class="suave">— no llevan período</small></span></label>
+    <label class="casilla"><input type="radio" name="concepto" value="2" {{ 'checked' if not c or c.concepto == 'servicios' }}> <span><strong>Servicios</strong> <small class="suave">— llevan período y vencimiento</small></span></label>
+    <label class="casilla"><input type="radio" name="concepto" value="3" {{ 'checked' if c and c.concepto == 'ambos' }}> <span><strong>Productos y servicios</strong> <small class="suave">— llevan período y vencimiento</small></span></label>
+  </fieldset>
+  <label for="modo">Período de sus facturas</label>
+  <select id="modo" name="modo_periodo">
+    {% for valor, nombre in modos %}<option value="{{ valor }}" {{ 'selected' if (c.modo_periodo if c else 'mes_completo') == valor }}>{{ nombre }}</option>{% endfor %}
+    {% if c and c.modo_periodo == 'auto' %}<option value="auto" selected>Automático (según la última factura)</option>{% endif %}
+  </select>
+  <small>«La de siempre» respeta este modo: mes completo pasa al mes siguiente, día de emisión usa hoy, rango corre las mismas fechas un mes.</small>
+  <label for="cv">Condición de venta</label>
+  <input id="cv" name="condicion_venta" value="{{ c.condicion_venta if c else 'Contado' }}">
   <div class="acciones"><button type="submit">Guardar</button> <a class="boton suave" href="/clientes">Cancelar</a></div>
 </form>
 {% if c %}

@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS clientes (
     unidad TEXT NOT NULL DEFAULT 'otras unidades',
     concepto TEXT NOT NULL DEFAULT 'servicios',
     vto_dias INTEGER NOT NULL DEFAULT 4,
+    modo_periodo TEXT NOT NULL DEFAULT 'mes_completo',
+    condicion_venta TEXT NOT NULL DEFAULT 'Contado',
+    plantilla TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (perfil, alias)
 );
 """
@@ -41,6 +44,22 @@ class Clientes:
         self.ruta = ruta or config.directorio_datos() / "historial.sqlite"
         with self._con() as con:
             con.executescript(_ESQUEMA)
+            self._agregar_columnas_nuevas(con)
+
+    @staticmethod
+    def _agregar_columnas_nuevas(con: sqlite3.Connection) -> None:
+        """Bases creadas por versiones anteriores: agrega las columnas que faltan. Los clientes
+        que ya existían quedan en modo «auto» (se comportan como siempre: el período se deduce de
+        la última factura)."""
+        existentes = {f["name"] for f in con.execute("PRAGMA table_info(clientes)")}
+        if "modo_periodo" not in existentes:
+            con.execute("ALTER TABLE clientes ADD COLUMN modo_periodo TEXT NOT NULL DEFAULT 'auto'")
+        if "condicion_venta" not in existentes:
+            con.execute(
+                "ALTER TABLE clientes ADD COLUMN condicion_venta TEXT NOT NULL DEFAULT 'Contado'"
+            )
+        if "plantilla" not in existentes:
+            con.execute("ALTER TABLE clientes ADD COLUMN plantilla TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def _con(self) -> Iterator[sqlite3.Connection]:

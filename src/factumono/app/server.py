@@ -35,6 +35,18 @@ from factumono.cli import asistente as asis
 AQUI = Path(__file__).parent
 COOKIE = "factumono_sesion"
 LEMA = "Si sos monotributista, no te vuelvas mono con las facturas 🐒"
+# Lo que se ofrece en los formularios (clave, nombre, ayuda).
+CONCEPTOS_DEL_FORMULARIO = (
+    ("1", "Productos", "Cosas que vendés. No llevan período."),
+    ("2", "Servicios", "Trabajo que hacés. Lleva período y vencimiento."),
+    ("3", "Productos y servicios", "Las dos cosas juntas. Lleva período y vencimiento."),
+)
+MODOS_DEL_FORMULARIO = (
+    ("mes_completo", "Mes completo"),
+    ("dia_emision", "Solo el día de emisión"),
+    ("rango", "Rango de fechas (desde - hasta)"),
+    ("sin_periodo", "Sin período (solo productos)"),
+)
 
 
 class Seguridad(BaseHTTPMiddleware):
@@ -249,17 +261,45 @@ def crear_app(
 
     @app.get("/nueva", response_class=HTMLResponse)
     def nueva(request: Request, cliente: str = "", repetir: int = 0) -> HTMLResponse:
+        clientes_ = svc.clientes()
+        inicial = cliente or (clientes_[0].alias if clientes_ else CONSUMIDOR_FINAL)
         return pagina(
             request,
             "nueva.html",
-            clientes=svc.clientes(),
-            seleccionado=cliente,
-            repetir=bool(repetir),
-            periodo=svc.periodo_sugerido(),
+            clientes=clientes_,
+            seleccionado=inicial,
             consumidor_final=CONSUMIDOR_FINAL,
             seccion="nueva",
             resumen=svc.resumen(),
+            **_opciones(inicial, repetir=bool(repetir)),
         )
+
+    def _opciones(cliente: str, *, repetir: bool = False, **forzado: str) -> dict[str, Any]:
+        """Concepto y período con los que arranca (o se refresca) el formulario."""
+        base = svc.opciones_del_cliente(cliente)
+        base.update({k: v for k, v in forzado.items() if v})
+        return {
+            "concepto": base["concepto"],
+            "modo": base["modo"],
+            "periodo": svc.periodo_sugerido(),
+            "modos": MODOS_DEL_FORMULARIO,
+            "conceptos": CONCEPTOS_DEL_FORMULARIO,
+            "repetir": repetir,
+            "hoy": svc.hoy.strftime("%d/%m/%Y"),
+        }
+
+    @app.get("/nueva/opciones", response_class=HTMLResponse)
+    def nueva_opciones(request: Request, cliente: str, repetir: int = 0) -> HTMLResponse:
+        """El bloque de concepto + período, con los valores habituales del cliente elegido."""
+        return parcial(request, "_opciones.html", **_opciones(cliente, repetir=bool(repetir)))
+
+    @app.get("/nueva/periodo", response_class=HTMLResponse)
+    def nueva_periodo(
+        request: Request, modo_periodo: str = "mes_completo", concepto: str = "2"
+    ) -> HTMLResponse:
+        """Solo los campos del período, cuando cambia el concepto o el modo."""
+        datos = _opciones("", concepto=concepto, modo=modo_periodo)
+        return parcial(request, "_periodo.html", **datos)
 
     @app.post("/nueva/preparar", response_class=HTMLResponse)
     def nueva_preparar(
@@ -270,11 +310,15 @@ def crear_app(
         periodo: Annotated[str, Form()] = "",
         vto_pago: Annotated[str, Form()] = "",
         repetir: Annotated[str, Form()] = "",
-        concepto: Annotated[str, Form()] = "servicios",
+        concepto: Annotated[str, Form()] = "",
+        modo_periodo: Annotated[str, Form()] = "",
+        desde: Annotated[str, Form()] = "",
+        hasta: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
         v = svc.preparar_factura(
             cliente=cliente, importe=importe, descripcion=descripcion, periodo=periodo,
             vto_pago=vto_pago, repetir=bool(repetir), concepto=concepto,
+            modo_periodo=modo_periodo, desde=desde, hasta=hasta,
         )  # fmt: skip
         return parcial(request, "_preview.html", v=v)
 
@@ -341,7 +385,7 @@ def crear_app(
     def cliente_nuevo(request: Request) -> HTMLResponse:
         return pagina(
             request, "cliente_form.html", c=None, condiciones=CONDICIONES_RECEPTOR,
-            seccion="clientes", resumen=svc.resumen(),
+            modos=MODOS_DEL_FORMULARIO, seccion="clientes", resumen=svc.resumen(),
         )  # fmt: skip
 
     @app.get("/clientes/{alias}/editar", response_class=HTMLResponse)
@@ -351,7 +395,7 @@ def crear_app(
             raise ErrorUsuario("No encuentro ese cliente.")
         return pagina(
             request, "cliente_form.html", c=c, condiciones=CONDICIONES_RECEPTOR,
-            seccion="clientes", resumen=svc.resumen(),
+            modos=MODOS_DEL_FORMULARIO, seccion="clientes", resumen=svc.resumen(),
         )  # fmt: skip
 
     @app.post("/clientes/guardar")
@@ -364,14 +408,17 @@ def crear_app(
         email: Annotated[str, Form()] = "",
         descripcion: Annotated[str, Form()] = "",
         unidad: Annotated[str, Form()] = "otras unidades",
-        concepto: Annotated[str, Form()] = "servicios",
+        concepto: Annotated[str, Form()] = "2",
         vto_dias: Annotated[int, Form()] = 4,
         editando: Annotated[str, Form()] = "",
+        modo_periodo: Annotated[str, Form()] = "mes",
+        condicion_venta: Annotated[str, Form()] = "Contado",
     ) -> RedirectResponse:
         svc.guardar_cliente(
             alias=alias, nombre=nombre, documento=documento, condicion_iva=condicion_iva,
             domicilio=domicilio, email=email, descripcion=descripcion, unidad=unidad,
             concepto=concepto, vto_dias=vto_dias, reemplazar=bool(editando),
+            modo_periodo=modo_periodo, condicion_venta=condicion_venta,
         )  # fmt: skip
         return RedirectResponse("/clientes", status_code=303)
 
