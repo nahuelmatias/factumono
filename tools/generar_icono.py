@@ -1,79 +1,66 @@
-"""Dibuja el ícono de Facturitas: una medialuna (la factura de panadería) con las puntas dobladas.
+"""Dibuja el ícono de Factumono: la cara de un monito simple y sonriente.
 
 Es un dibujo original hecho a mano con Pillow (sin logos ni imágenes de terceros).
     uv run python tools/generar_icono.py
-Genera packaging/facturitas.ico y src/facturitas/app/static/icono.png.
+Genera packaging/factumono.ico y src/factumono/app/static/icono.png.
 """
 
-import math
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 RAIZ = Path(__file__).resolve().parents[1]
 N = 1024  # se dibuja grande y se reduce (bordes suaves)
-FONDO = (255, 244, 224)
-MASA_CLARA = (247, 190, 84)
-MASA = (229, 149, 44)
-MASA_OSCURA = (176, 98, 24)
-BRILLO = (255, 226, 150)
+FONDO = (214, 236, 214)  # verde selva suave
+PELO = (139, 90, 43)
+PELO_OSCURO = (101, 62, 24)
+CARA = (244, 205, 160)
+ORAJA = (226, 170, 125)
+TINTA = (52, 32, 14)
+BLANCO = (255, 255, 255)
+BOCA = (176, 82, 70)
 
 
-def _punto(s: float, radio: float, cx: float, cy: float, abertura: float) -> tuple[float, float, float]:
-    """Punto de la línea media y su ángulo, con s en [-1, 1] sobre un arco abierto hacia abajo."""
-    t = math.radians(abertura) * s
-    return cx + math.sin(t) * radio, cy - math.cos(t) * radio, t
-
-
-def _banda(radio: float, cx: float, cy: float, abertura: float, grosor, desfase: float = 0.0):
-    """Polígono de una banda curva cuyo grosor depende de s (más gruesa al medio, puntas finas)."""
-    izq, der = [], []
-    for i in range(121):
-        s = -1 + 2 * i / 120
-        x, y, t = _punto(s, radio, cx, cy, abertura)
-        w = grosor(s)
-        nx, ny = math.sin(t), -math.cos(t)  # normal hacia afuera
-        izq.append((x + nx * (w + desfase), y + ny * (w + desfase)))
-        der.append((x - nx * (w - desfase), y - ny * (w - desfase)))
-    return izq + der[::-1]
+def circulo(d: ImageDraw.ImageDraw, cx: float, cy: float, r: float, color: tuple[int, int, int]) -> None:
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=color)
 
 
 def dibujar() -> Image.Image:
     img = Image.new("RGBA", (N, N), (0, 0, 0, 0))
-    ImageDraw.Draw(img).rounded_rectangle([20, 20, N - 20, N - 20], radius=210, fill=FONDO)
-    cx, cy, radio, abertura = N / 2, N * 0.60, N * 0.30, 112  # las puntas se doblan hacia adentro
-
-    def grosor(s: float) -> float:
-        return 36 + 92 * (1 - abs(s) ** 1.7)
-
-    sombra = Image.new("RGBA", (N, N), (0, 0, 0, 0))
-    ImageDraw.Draw(sombra).polygon(
-        [(x, y + 34) for x, y in _banda(radio, cx, cy, abertura, grosor)], fill=(90, 50, 10, 80)
-    )
-    img.alpha_composite(sombra.filter(ImageFilter.GaussianBlur(20)))
     d = ImageDraw.Draw(img)
-    d.polygon(_banda(radio, cx, cy, abertura, lambda s: grosor(s) + 12), fill=MASA_OSCURA)
-    d.polygon(_banda(radio, cx, cy, abertura, grosor), fill=MASA)
-    d.polygon(_banda(radio, cx, cy, abertura, lambda s: grosor(s) * 0.62, desfase=22), fill=MASA_CLARA)
-    d.polygon(_banda(radio, cx, cy, abertura, lambda s: grosor(s) * 0.22, desfase=44), fill=BRILLO)
-    # los pliegues de la medialuna: cortes oscuros a lo ancho de la banda
-    for s in (-0.66, -0.36, -0.12, 0.12, 0.36, 0.66):
-        x, y, t = _punto(s, radio, cx, cy, abertura)
-        w = grosor(s)
-        nx, ny = math.sin(t), -math.cos(t)
-        tx, ty = math.cos(t), math.sin(t)  # tangente
-        a = (x + nx * (w + 6) - tx * 14, y + ny * (w + 6) - ty * 14)
-        b = (x - nx * (w + 6) + tx * 14, y - ny * (w + 6) + ty * 14)
-        d.line([a, b], fill=MASA_OSCURA, width=14)
+    d.rounded_rectangle([20, 20, N - 20, N - 20], radius=210, fill=FONDO)
+    cx, cy = N / 2, N * 0.53
+    # orejas
+    for lado in (-1, 1):
+        x = cx + lado * 330
+        circulo(d, x, cy - 70, 150, PELO)
+        circulo(d, x, cy - 70, 92, ORAJA)
+    # cabeza
+    d.ellipse([cx - 360, cy - 360, cx + 360, cy + 330], fill=PELO)
+    # sombra suave bajo el flequillo
+    d.ellipse([cx - 335, cy - 335, cx + 335, cy + 305], outline=PELO_OSCURO, width=10)
+    # máscara de la cara: dos lóbulos arriba (ojos) y un óvalo abajo (hocico)
+    circulo(d, cx - 118, cy - 40, 150, CARA)
+    circulo(d, cx + 118, cy - 40, 150, CARA)
+    d.ellipse([cx - 250, cy - 10, cx + 250, cy + 300], fill=CARA)
+    # ojos
+    for lado in (-1, 1):
+        x = cx + lado * 118
+        circulo(d, x, cy - 50, 52, TINTA)
+        circulo(d, x + 14, cy - 66, 17, BLANCO)
+    # nariz y sonrisa
+    circulo(d, cx - 34, cy + 100, 17, TINTA)
+    circulo(d, cx + 34, cy + 100, 17, TINTA)
+    d.arc([cx - 125, cy + 85, cx + 125, cy + 245], start=25, end=155, fill=BOCA, width=26)
     return img
 
 
 def main() -> None:
     img = dibujar()
-    png = RAIZ / "src" / "facturitas" / "app" / "static" / "icono.png"
+    png = RAIZ / "src" / "factumono" / "app" / "static" / "icono.png"
     png.parent.mkdir(parents=True, exist_ok=True)
     img.resize((256, 256), Image.LANCZOS).save(png)
-    ico = RAIZ / "packaging" / "facturitas.ico"
+    ico = RAIZ / "packaging" / "factumono.ico"
     img.save(ico, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
     print("OK:", png, ico)
 

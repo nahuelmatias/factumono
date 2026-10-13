@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 from mcp import Client
 
-from facturitas import config
-from facturitas.arca.wsfe import CondicionIva, PuntoVenta
-from facturitas.contexto import Contexto
-from facturitas.core.models import Cliente, Credencial, Perfil
-from facturitas.mcp.herramientas import Herramientas, ItemEntrada, ReceptorEntrada
-from facturitas.mcp.server import crear_servidor
-from facturitas.storage.historial import Historial
+from factumono import config
+from factumono.arca.wsfe import CondicionIva, PuntoVenta
+from factumono.contexto import Contexto
+from factumono.core.models import Cliente, Credencial, Perfil
+from factumono.mcp.herramientas import Herramientas, ItemEntrada, ReceptorEntrada
+from factumono.mcp.server import crear_servidor
+from factumono.storage.historial import Historial
 from tests.test_cli import WsaaFalso, WsfeFalso
 
 AHORA = datetime(2026, 10, 10, 15, 0)
@@ -280,7 +280,7 @@ def test_hay_una_sola_forma_de_emitir() -> None:
     """Ninguna otra tool llama al servicio de emisión: solo `emitir_comprobante`."""
     import inspect
 
-    from facturitas.mcp import herramientas
+    from factumono.mcp import herramientas
 
     fuente = inspect.getsource(herramientas.Herramientas)
     assert fuente.count("service.emitir(") == 1

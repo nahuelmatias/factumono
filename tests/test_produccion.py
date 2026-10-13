@@ -7,16 +7,16 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-from facturitas import config
-from facturitas.arca import ambientes
-from facturitas.arca.wsfe import PuntoVenta
-from facturitas.cli import app as cli
-from facturitas.contexto import Contexto, construir
-from facturitas.core import service
-from facturitas.core.diagnostico import evaluar_punto_venta
-from facturitas.core.models import Comprobante, Credencial, Perfil
-from facturitas.pdf.salida import ruta_pdf
-from facturitas.storage.historial import Historial
+from factumono import config
+from factumono.arca import ambientes
+from factumono.arca.wsfe import PuntoVenta
+from factumono.cli import app as cli
+from factumono.contexto import Contexto, construir
+from factumono.core import service
+from factumono.core.diagnostico import evaluar_punto_venta
+from factumono.core.models import Comprobante, Credencial, Perfil
+from factumono.pdf.salida import ruta_pdf
+from factumono.storage.historial import Historial
 from tests.conftest import ProduccionBloqueada, es_host_de_produccion
 from tests.test_cli import WsaaFalso, WsfeFalso
 from tests.test_service import ArcaFalso

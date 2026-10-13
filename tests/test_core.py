@@ -4,9 +4,9 @@ from decimal import Decimal
 
 import pytest
 
-from facturitas.config import Config, cargar, guardar
-from facturitas.core import cuit, money
-from facturitas.core.models import Comprobante, Credencial, Item, Perfil
+from factumono.config import Config, cargar, guardar
+from factumono.core import cuit, money
+from factumono.core.models import Comprobante, Credencial, Item, Perfil
 
 
 def test_cuit_validos_de_la_especificacion_oficial() -> None:

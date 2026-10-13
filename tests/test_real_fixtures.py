@@ -12,11 +12,11 @@ import httpx
 import pytest
 import respx
 
-from facturitas.arca.ambientes import HOMO
-from facturitas.arca.errors import ComprobanteRechazado
-from facturitas.arca.wsaa import Wsaa
-from facturitas.arca.wsfe import Wsfe, construir_detalle_factura_c
-from facturitas.core.models import CbteAsociado, Comprobante, Credencial
+from factumono.arca.ambientes import HOMO
+from factumono.arca.errors import ComprobanteRechazado
+from factumono.arca.wsaa import Wsaa
+from factumono.arca.wsfe import Wsfe, construir_detalle_factura_c
+from factumono.core.models import CbteAsociado, Comprobante, Credencial
 from tests.conftest import CUIT_EMISOR, fixture
 
 AHORA = datetime(2026, 10, 10, 15, 0, tzinfo=UTC)

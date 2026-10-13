@@ -7,7 +7,7 @@
 *.pfx
 certs/
 secrets/
-.facturitas/
+.factumono/
 *.env
 .env*
 !.env.example
@@ -48,3 +48,5 @@ Thumbs.db
 .claude/settings.local.json
 .venv-build/
 build/
+
+.factumono/

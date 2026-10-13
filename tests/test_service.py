@@ -7,11 +7,11 @@ from decimal import Decimal
 import httpx
 import pytest
 
-from facturitas.arca.errors import ArcaError, ComprobanteRechazado, EstadoIncierto
-from facturitas.arca.wsfe import ComprobanteConsultado, ResultadoCae
-from facturitas.core import service
-from facturitas.core.models import Comprobante, Concepto
-from facturitas.storage.historial import (
+from factumono.arca.errors import ArcaError, ComprobanteRechazado, EstadoIncierto
+from factumono.arca.wsfe import ComprobanteConsultado, ResultadoCae
+from factumono.core import service
+from factumono.core.models import Comprobante, Concepto
+from factumono.storage.historial import (
     AUTORIZADO,
     FALLIDO,
     INCIERTO,

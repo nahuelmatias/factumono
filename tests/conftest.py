@@ -13,8 +13,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from facturitas.arca import ambientes
-from facturitas.core.models import (
+from factumono.arca import ambientes
+from factumono.core.models import (
     FACTURA_C,
     Comprobante,
     Concepto,
@@ -93,7 +93,7 @@ def sin_produccion(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
 def home_aislado(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Cada test usa su propio directorio de datos: jamás toca el del usuario."""
     home = tmp_path / "home"
-    monkeypatch.setenv("FACTURITAS_HOME", str(home))
+    monkeypatch.setenv("FACTUMONO_HOME", str(home))
     yield home
 
 

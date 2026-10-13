@@ -8,12 +8,12 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from facturitas import __version__, config
-from facturitas.arca.qr import URL_QR, url_qr
-from facturitas.core.models import CbteAsociado, Comprobante, Concepto, Item
-from facturitas.pdf.render import renderizar
-from facturitas.pdf.salida import guardar_pdf, nombre_archivo, ruta_pdf
-from facturitas.storage.historial import AUTORIZADO, Historial
+from factumono import __version__, config
+from factumono.arca.qr import URL_QR, url_qr
+from factumono.core.models import CbteAsociado, Comprobante, Concepto, Item
+from factumono.pdf.render import renderizar
+from factumono.pdf.salida import guardar_pdf, nombre_archivo, ruta_pdf
+from factumono.storage.historial import AUTORIZADO, Historial
 from tests.conftest import CUIT_EMISOR, CUIT_RECEPTOR
 
 CAE = "70417054367476"
@@ -167,16 +167,16 @@ def test_guardar_pdf_en_carpeta_configurable(tmp_path: Path, comprobante: Compro
     assert ruta_pdf(cfg, prod) == destino / "matias" / f"{CUIT_EMISOR}_011_00002_00000042.pdf"
 
 
-def test_carpeta_por_defecto_es_documentos_facturitas() -> None:
+def test_carpeta_por_defecto_es_documentos_factumono() -> None:
     base = config.Config().carpeta_base_pdf()
-    assert base.name == "Facturitas" and base.parent.name.lower() in ("documents", "documentos")
+    assert base.name == "Factumono" and base.parent.name.lower() in ("documents", "documentos")
 
 
 def test_metadata_del_pdf(comprobante: Comprobante) -> None:
     meta = PdfReader(BytesIO(renderizar(comprobante, 1, CAE, VTO, homologacion=False))).metadata
     assert meta is not None
     assert meta.author == "EMISOR FICTICIO"
-    assert meta.creator == f"Facturitas {__version__}" == meta.producer
+    assert meta.creator == f"Factumono {__version__}" == meta.producer
 
 
 def test_el_qr_sigue_estrictamente_la_especificacion_y_no_lleva_items() -> None:
@@ -187,7 +187,7 @@ def test_el_qr_sigue_estrictamente_la_especificacion_y_no_lleva_items() -> None:
     from datetime import date
     from decimal import Decimal
 
-    from facturitas.arca import qr
+    from factumono.arca import qr
 
     url = qr.url_qr(
         fecha=date(2026, 10, 12), cuit="20000000001", punto_venta=2, cbte_tipo=11, numero=1,

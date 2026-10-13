@@ -1,11 +1,11 @@
 ---
 name: facturacion-mensual
-description: Rutina de facturación mensual con Facturitas (ARCA/AFIP). Usala cuando el usuario pida facturar, hacer "la de siempre", anular una factura o saber cuánto facturó, usando las tools del MCP de Facturitas.
+description: Rutina de facturación mensual con Factumono (ARCA/AFIP). Usala cuando el usuario pida facturar, hacer "la de siempre", anular una factura o saber cuánto facturó, usando las tools del MCP de Factumono.
 ---
 
-# Facturación mensual con Facturitas
+# Facturación mensual con Factumono
 
-Esta skill guía la rutina de facturar con las tools del MCP `facturitas`. Todo comprobante pasa
+Esta skill guía la rutina de facturar con las tools del MCP `factumono`. Todo comprobante pasa
 por **preparar → mostrar el preview → confirmar**. Nada se emite sin que el usuario lo apruebe.
 
 ## Reglas que no se saltean

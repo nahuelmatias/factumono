@@ -6,13 +6,13 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from facturitas import __version__, config
-from facturitas.arca.wsaa import Ticket
-from facturitas.arca.wsfe import CondicionIva, PuntoVenta
-from facturitas.cli import app as cli
-from facturitas.contexto import Contexto
-from facturitas.core.models import Comprobante, Credencial, Perfil
-from facturitas.storage.historial import Historial
+from factumono import __version__, config
+from factumono.arca.wsaa import Ticket
+from factumono.arca.wsfe import CondicionIva, PuntoVenta
+from factumono.cli import app as cli
+from factumono.contexto import Contexto
+from factumono.core.models import Comprobante, Credencial, Perfil
+from factumono.storage.historial import Historial
 from tests.test_service import ArcaFalso
 
 runner = CliRunner()
@@ -329,7 +329,7 @@ def test_emitir_con_cliente_y_repetir_ultima(wsfe_falso: WsfeFalso) -> None:
 
 def test_mcp_instalar_solo_mostrar_no_modifica_nada(tmp_path: Path) -> None:
     r = runner.invoke(cli.app, ["mcp", "instalar", "--solo-mostrar"])
-    assert r.exit_code == 0 and "claude mcp add facturitas" in r.output
+    assert r.exit_code == 0 and "claude mcp add factumono" in r.output
     ruta = tmp_path / "cfg.json"
     r = runner.invoke(cli.app, ["mcp", "instalar", "--config", str(ruta)])
     assert r.exit_code == 0 and "configurado" in r.output and ruta.is_file()

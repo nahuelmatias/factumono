@@ -1,4 +1,4 @@
-"""Asistente `facturitas init`: flujo completo, retomar, validaciones y producción."""
+"""Asistente `factumono init`: flujo completo, retomar, validaciones y producción."""
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -11,11 +11,11 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from typer.testing import CliRunner
 
-from facturitas import config
-from facturitas.arca import csr as csr_mod
-from facturitas.cli import app as cli
-from facturitas.cli import asistente as asis
-from facturitas.cli.asistente import Asistente, limpiar_ruta, validar_certificado
+from factumono import config
+from factumono.arca import csr as csr_mod
+from factumono.cli import app as cli
+from factumono.cli import asistente as asis
+from factumono.cli.asistente import Asistente, limpiar_ruta, validar_certificado
 
 CUIT = "20000000001"  # ficticio
 
@@ -270,7 +270,7 @@ def test_produccion_con_perfil_guarda_credencial_y_punto_de_venta_sin_activar(
     )
     assert ok
     io = Guion(
-        "",  # alias sugerido (facturitas-prod)
+        "",  # alias sugerido (factumono-prod)
         "n",
         "",
         emitir_crt("prod", tmp_path / "p.crt", carpeta_certificados),

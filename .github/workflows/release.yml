@@ -25,7 +25,7 @@ jobs:
       - name: La versión del tag tiene que ser la del paquete
         shell: pwsh
         run: |
-          $v = (uv run python -c "import facturitas; print(facturitas.__version__)").Trim()
+          $v = (uv run python -c "import factumono; print(factumono.__version__)").Trim()
           if ("v$v" -ne "${{ github.ref_name }}") {
             throw "El tag ${{ github.ref_name }} no coincide con la versión del paquete ($v)"
           }
@@ -40,15 +40,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $v = "${{ github.ref_name }}".TrimStart("v")
-          $setup = "build/installer/Facturitas-Setup-$v.exe"
+          $setup = "build/installer/Factumono-Setup-$v.exe"
           $hash = (Get-Content "$setup.sha256").Split(" ")[0]
           $notas = @"
-          ## Facturitas $v (Windows)
+          ## Factumono $v (Windows)
 
-          Descargá **Facturitas-Setup-$v.exe** y seguí la guía «Instalar en 5 minutos» del README.
+          Descargá **Factumono-Setup-$v.exe** y seguí la guía «Instalar en 5 minutos» del README.
           Windows SmartScreen va a avisar porque la app todavía no está firmada: *Más información → Ejecutar de todas formas*.
 
-          **SHA256** de ``Facturitas-Setup-$v.exe``:
+          **SHA256** de ``Factumono-Setup-$v.exe``:
           ``$hash``
           "@
-          gh release create "${{ github.ref_name }}" $setup "$setup.sha256" --title "Facturitas $v" --notes "$notas"
+          gh release create "${{ github.ref_name }}" $setup "$setup.sha256" --title "Factumono $v" --notes "$notas"

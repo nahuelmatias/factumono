@@ -4,10 +4,10 @@ from decimal import Decimal
 
 import pytest
 
-from facturitas.core import armado, service
-from facturitas.core.models import Cliente, Comprobante
-from facturitas.storage.clientes import ClienteNoEncontrado, Clientes
-from facturitas.storage.historial import Historial
+from factumono.core import armado, service
+from factumono.core.models import Cliente, Comprobante
+from factumono.storage.clientes import ClienteNoEncontrado, Clientes
+from factumono.storage.historial import Historial
 from tests.test_service import ArcaFalso
 
 HOY = date(2026, 10, 10)

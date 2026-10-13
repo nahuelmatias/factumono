@@ -9,16 +9,16 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from facturitas import config
-from facturitas.cli import app as cli
-from facturitas.contexto import Contexto
-from facturitas.core import service
-from facturitas.core.models import Cliente, Comprobante, Credencial, Perfil
-from facturitas.core.sincronia import brechas, recuperar_brechas
-from facturitas.mcp.herramientas import Herramientas
-from facturitas.storage import backup
-from facturitas.storage.clientes import Clientes
-from facturitas.storage.historial import Historial
+from factumono import config
+from factumono.cli import app as cli
+from factumono.contexto import Contexto
+from factumono.core import service
+from factumono.core.models import Cliente, Comprobante, Credencial, Perfil
+from factumono.core.sincronia import brechas, recuperar_brechas
+from factumono.mcp.herramientas import Herramientas
+from factumono.storage import backup
+from factumono.storage.clientes import Clientes
+from factumono.storage.historial import Historial
 from tests import test_cli
 from tests.test_cli import WsaaFalso, WsfeFalso
 from tests.test_service import ArcaFalso
@@ -110,7 +110,7 @@ def test_emitir_se_puede_negar_a_recuperar_y_sigue(
 def test_emitir_con_yes_solo_avisa(wsfe_falso: WsfeFalso, comprobante: Comprobante) -> None:
     _fuera_de_esta_pc(wsfe_falso, comprobante, 1)
     r = runner.invoke(cli.app, [*ARGS, "--yes"])
-    assert r.exit_code == 0 and "facturitas recuperar" in r.output
+    assert r.exit_code == 0 and "factumono recuperar" in r.output
     assert len(cli._historial(cli._contexto(None)).listar()) == 1  # no recuperó nada solo
 
 
@@ -170,8 +170,8 @@ def datos(comprobante: Comprobante, perfil: Perfil, credencial: Credencial) -> P
     Clientes().guardar("default", Cliente("acciona", "ACCIONA", 80, 30710581467, "RI"))
     d = config.directorio_datos()
     (config.directorio_cache() / "ta-homo-wsfe-x.json").write_text('{"token": "SECRETO"}')
-    (d / "facturitas-prod.key").write_text("-----BEGIN PRIVATE KEY-----")
-    (d / "facturitas-prod.crt").write_text("-----BEGIN CERTIFICATE-----")
+    (d / "factumono-prod.key").write_text("-----BEGIN PRIVATE KEY-----")
+    (d / "factumono-prod.crt").write_text("-----BEGIN CERTIFICATE-----")
     return d
 
 
@@ -182,7 +182,7 @@ def test_backup_incluye_bases_clientes_y_config_con_fecha_en_el_nombre(
     datos: Path, tmp_path: Path
 ) -> None:
     r = backup.crear_backup(tmp_path / "bk", AHORA)
-    assert r.ruta.name == "facturitas-backup-20261011-153005.zip"
+    assert r.ruta.name == "factumono-backup-20261011-153005.zip"
     assert set(r.archivos) == {"historial.sqlite", "historial-prod.sqlite", "config.toml"}
     with zipfile.ZipFile(r.ruta) as z:
         assert set(z.namelist()) == {*r.archivos, "manifiesto.json"}
@@ -235,7 +235,7 @@ def test_restaurar_rechaza_zips_raros(tmp_path: Path) -> None:
     con_clave = tmp_path / "clave.zip"
     with zipfile.ZipFile(con_clave, "w") as z:
         z.writestr("manifiesto.json", "{}")
-        z.writestr("facturitas.key", "x")
+        z.writestr("factumono.key", "x")
     with pytest.raises(backup.BackupError, match="claves"):
         backup.restaurar(con_clave)
     sin_manifiesto = tmp_path / "sm.zip"
@@ -262,7 +262,7 @@ def test_comandos_backup_y_restaurar(datos: Path, tmp_path: Path) -> None:
     r = runner.invoke(cli.app, ["backup", str(tmp_path / "salida")])
     assert r.exit_code == 0, r.output
     assert "No incluye la clave privada" in r.output
-    (zip_,) = (tmp_path / "salida").glob("facturitas-backup-*.zip")
+    (zip_,) = (tmp_path / "salida").glob("factumono-backup-*.zip")
     r = runner.invoke(cli.app, ["restaurar", str(zip_)], input="n\n")
     assert "Cancelado" in r.output
     r = runner.invoke(cli.app, ["restaurar", str(zip_), "--yes"])

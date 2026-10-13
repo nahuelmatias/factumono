@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block titulo %}Factumono · Acerca de{% endblock %}
+{% block contenido %}
+<section class="bienvenida">
+  <img src="/static/icono.png" alt="Factumono: un monito">
+  <h1>Factumono {{ version }}</h1>
+  <p class="lema">{{ lema }}</p>
+  <p>Facturación electrónica de ARCA, <strong>fácil, local y abierta</strong>. Tus claves se quedan en tu compu y el código es de todos (licencia MIT).</p>
+  <p class="suave">Poné un mono a hacer tus facturas 🐒: sirve también para Responsables Inscriptos y contadores.</p>
+  <p><a href="https://github.com/nahuelmatias/factumono" target="_blank" rel="noopener">Código en GitHub</a></p>
+</section>
+{% endblock %}

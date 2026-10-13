@@ -1,4 +1,4 @@
-# Facturitas — facturación electrónica ARCA fácil, local y abierta
+# Factumono — facturación electrónica ARCA fácil, local y abierta
 
 > Este archivo es la especificación y guía de trabajo del proyecto. Leelo entero antes de escribir código.
 > Idioma del proyecto: código, nombres y commits en inglés; UI, mensajes al usuario, README y docs en español rioplatense.
@@ -31,7 +31,7 @@ Un solo motor, cuatro caras:
 - **PDF**: `reportlab` + `qrcode`.
 - **Persistencia**: SQLite (historial de comprobantes, borradores, clientes, perfiles) en el directorio de datos del usuario (`platformdirs`).
 - **Secretos**: la clave privada nunca sale de la máquina. Se guarda en el directorio de datos con permisos restrictivos y, opcionalmente, cifrada con passphrase (la passphrase va en el keyring del SO vía `keyring`). Nada de secretos en el repo, en logs ni en respuestas del MCP.
-- **Un solo ejecutable** `facturitas` con subcomandos: `facturitas app` (UI + API, abre el navegador), `facturitas mcp` (stdio), y los comandos de CLI.
+- **Un solo ejecutable** `factumono` con subcomandos: `factumono app` (UI + API, abre el navegador), `factumono mcp` (stdio), y los comandos de CLI.
 
 ## 4. Reglas de negocio ARCA (verificar contra la documentación oficial vigente antes de implementar)
 
@@ -74,7 +74,7 @@ Documentación: manuales de WSAA y WSFEv1 en el sitio de ARCA (sección Web Serv
 - **Nunca emitir sin confirmación.** El flujo es siempre *preparar* (borrador + preview, sin tocar ARCA salvo para consultar el próximo número) → *confirmar* (emisión real). Los borradores vencen (ej. 15 min).
 - **Idempotencia**: toda emisión lleva una `idempotency_key` (la API la exige; MCP y UI la generan internamente). Si se corta la red después de mandar `FECAESolicitar`, **antes de reintentar** hay que consultar con `FECompUltimoAutorizado` / `FECompConsultar` si el comprobante ya quedó autorizado, para no emitir dos veces.
 - **Preview antes de cada `FECAESolicitar`, también en homologación.** La CLI siempre muestra el preview y pide confirmación; los tests automatizados usan `--yes`.
-- **Ambiente explícito**: homologación por defecto. Producción solo después de que el perfil haya hecho al menos una emisión de prueba OK y con un toggle explícito. Mostrar siempre el ambiente en UI, CLI y en las respuestas del MCP ("⚠️ PRODUCCIÓN — comprobante con validez fiscal"). Cada ambiente tiene su credencial, su punto de venta, su caché de TA, su historial y su carpeta de PDF; el cambio es solo explícito (`facturitas ambiente usar prod|homo`), prod exige que `estado` dé OK, y la IA no puede cambiarlo. El aviso de posible duplicado es solo informativo (se apaga por perfil); los tests tienen un guard que falla ante cualquier request a hosts de producción.
+- **Ambiente explícito**: homologación por defecto. Producción solo después de que el perfil haya hecho al menos una emisión de prueba OK y con un toggle explícito. Mostrar siempre el ambiente en UI, CLI y en las respuestas del MCP ("⚠️ PRODUCCIÓN — comprobante con validez fiscal"). Cada ambiente tiene su credencial, su punto de venta, su caché de TA, su historial y su carpeta de PDF; el cambio es solo explícito (`factumono ambiente usar prod|homo`), prod exige que `estado` dé OK, y la IA no puede cambiarlo. El aviso de posible duplicado es solo informativo (se apaga por perfil); los tests tienen un guard que falla ante cualquier request a hosts de producción.
 - La API y la UI escuchan **solo en 127.0.0.1**. La API usa un token local (generado en la instalación) para que ninguna web del navegador pueda pegarle (cuidar CORS/CSRF).
 - Logs sin token, sign ni clave privada. Errores de ARCA traducidos a mensajes claros en español (mantener un mapa de códigos de error frecuentes → explicación + acción sugerida).
 - Tests: unitarios con respuestas SOAP grabadas (fixtures), más tests de integración contra homologación marcados aparte (`pytest -m homo`), que se corren solo si hay certificado de prueba configurado.
@@ -101,7 +101,7 @@ Documentación: manuales de WSAA y WSFEv1 en el sitio de ARCA (sección Web Serv
 - Caso Postaberry: `POST /vouchers` con `confirm=true` directo (el POS ya confirmó en caja), Consumidor Final, ítems `[{qty: 1, unit: "docena", desc: "Facturas", unit_price: ...}, {qty: 0.5, unit: "kg", desc: "Pan", unit_price: ...}]`.
 
 **CLI**
-- `facturitas init` (asistente: genera clave + CSR y explica paso a paso qué hacer en ARCA). **Hecho (Instalador v0.1):** `facturitas init` sin opciones es un asistente interactivo en consola (retomable) que reemplazó a `tools/gen_csr.py`; con opciones (`--cert`, `--key`, ...) registra credencial y perfil directamente, `facturitas cert import`, `facturitas perfil ...`, `facturitas cliente ...`, `facturitas emitir ...` (con preview y confirmación interactiva, `--yes` para scripts), `facturitas lote archivo.xlsx`, `facturitas ultimo`, `facturitas estado`.
+- `factumono init` (asistente: genera clave + CSR y explica paso a paso qué hacer en ARCA). **Hecho (Instalador v0.1):** `factumono init` sin opciones es un asistente interactivo en consola (retomable) que reemplazó a `tools/gen_csr.py`; con opciones (`--cert`, `--key`, ...) registra credencial y perfil directamente, `factumono cert import`, `factumono perfil ...`, `factumono cliente ...`, `factumono emitir ...` (con preview y confirmación interactiva, `--yes` para scripts), `factumono lote archivo.xlsx`, `factumono ultimo`, `factumono estado`.
 
 **Web UI** (prioridad: que la entienda Miguel)
 - Primer arranque: asistente en pasos con capturas/explicaciones de cada pantalla de ARCA: (1) generar clave y CSR con un botón, (2) subir el CSR en "Administración de Certificados Digitales" y pegar o subir el `.crt`, (3) asociar el servicio de facturación electrónica en "Administrador de Relaciones", (4) crear el punto de venta Web Services, (5) emisión de prueba en homologación. Validar cada paso contra ARCA cuando se pueda (ej. `FEParamGetPtosVenta`).
@@ -112,29 +112,29 @@ Documentación: manuales de WSAA y WSFEv1 en el sitio de ARCA (sección Web Serv
 ## 7. Empaquetado y distribución (GitHub Releases)
 
 No hace falta tener cada SO: se compila en **GitHub Actions** con una matriz `windows-latest`, `ubuntu-latest` y `macos-14` (arm64). PyInstaller no cross-compila, por eso se usa un runner por SO.
-- **Windows**: PyInstaller (`--onedir`) + **Inno Setup** → `Facturitas-Setup-x.y.z.exe`. Instala por usuario (sin admin), crea accesos directos e ícono en la bandeja (`pystray`) que abre la UI. Sin firma de código, SmartScreen va a advertir: documentarlo en el README y evaluar más adelante firma gratuita para OSS (ej. SignPath).
+- **Windows**: PyInstaller (`--onedir`) + **Inno Setup** → `Factumono-Setup-x.y.z.exe`. Instala por usuario (sin admin), crea accesos directos e ícono en la bandeja (`pystray`) que abre la UI. Sin firma de código, SmartScreen va a advertir: documentarlo en el README y evaluar más adelante firma gratuita para OSS (ej. SignPath).
 - **Linux**: AppImage (y opcionalmente `.deb`).
 - **macOS**: `.app` dentro de un `.dmg` para arm64, sin firmar. Documentar cómo abrirlo pese a Gatekeeper (clic derecho → Abrir). Firma y notarización quedan para después (requiere cuenta Apple Developer paga).
-- **Para devs**: `uv tool install facturitas` / `pipx install facturitas` (publicar en PyPI).
+- **Para devs**: `uv tool install factumono` / `pipx install factumono` (publicar en PyPI).
 - **Claude Desktop**: evaluar empaquetar también como bundle de extensión MCP de un clic (verificar el formato vigente en la documentación de Anthropic).
 - Smoke test en CI por SO: ejecutar el binario empaquetado con `--version` y `estado --offline`.
 - Releases automáticos al pushear un tag `v*`, con checksums SHA256.
 
 **Empaquetado: lo aprendido (spike, Windows, PyInstaller 6 `--onedir`)**
-- Build: `pwsh packaging/build.ps1` (PyInstaller con `packaging/facturitas.spec`, smoke test e instalador Inno Setup). El CI (`empaquetado-windows`) lo corre en cada push; `release.yml` publica al pushear un tag `v*` (el tag tiene que coincidir con `__version__`).
-- `mcp` y `reportlab` hay que incluirlos enteros (`collect_all`): `mcp` importa módulos dinámicamente y `reportlab` carga datos/fuentes por ruta. `facturitas` se incluye con `collect_submodules`. Con eso: `cryptography`, `httpx` (incluido el contexto TLS propio) y `qrcode` funcionan sin tocar nada más.
-- GUI (v0.2): se arman dos ejecutables en la misma carpeta, `facturitas.exe` (consola: CLI + MCP) y `facturitas-gui.exe` (sin consola, abre la ventana). Plantillas, estáticos y topes viajan con `collect_data_files("facturitas")`; `uvicorn` (submódulos), `webview`/`pythonnet`/`clr_loader` y `multipart` con `collect_all`. `facturitas app --probar` es el autochequeo sin ventana que usa el smoke test. pywebview necesita WebView2 (viene con Windows 10/11 al día); si no está, la app abre el navegador.
+- Build: `pwsh packaging/build.ps1` (PyInstaller con `packaging/factumono.spec`, smoke test e instalador Inno Setup). El CI (`empaquetado-windows`) lo corre en cada push; `release.yml` publica al pushear un tag `v*` (el tag tiene que coincidir con `__version__`).
+- `mcp` y `reportlab` hay que incluirlos enteros (`collect_all`): `mcp` importa módulos dinámicamente y `reportlab` carga datos/fuentes por ruta. `factumono` se incluye con `collect_submodules`. Con eso: `cryptography`, `httpx` (incluido el contexto TLS propio) y `qrcode` funcionan sin tocar nada más.
+- GUI (v0.2): se arman dos ejecutables en la misma carpeta, `factumono.exe` (consola: CLI + MCP) y `factumono-gui.exe` (sin consola, abre la ventana). Plantillas, estáticos y topes viajan con `collect_data_files("factumono")`; `uvicorn` (submódulos), `webview`/`pythonnet`/`clr_loader` y `multipart` con `collect_all`. `factumono app --probar` es el autochequeo sin ventana que usa el smoke test. pywebview necesita WebView2 (viene con Windows 10/11 al día); si no está, la app abre el navegador.
 - No hay WSDL que embeber: el cliente de ARCA arma los XML a mano (decisión de arquitectura vigente).
 - Verificado: el `.exe` corre con un PATH sin Python, emite una Factura C en homologación con su PDF/QR y responde por MCP stdio (13 tools). Tamaño de la carpeta ≈ 70 MB.
-- Ojo en desarrollo: si Claude Desktop tiene el MCP andando desde el repo (`uv run --directory ... facturitas mcp`), `facturitas.exe` del `.venv` queda bloqueado y `uv sync`/`uv run` fallan al reconstruirlo («os error 32»). Solución: otro entorno (`UV_PROJECT_ENVIRONMENT=.venv-build`) o cerrar Claude Desktop. El instalado usa su propio `.exe`, así que no tiene este problema.
-- `mcp instalar` detecta si corre empaquetado (`sys.frozen`) y escribe `<carpeta de instalación>\facturitas.exe mcp`; desde el repo escribe `uv run --directory <repo> facturitas mcp`.
-- El instalador (Inno Setup): por usuario (sin admin), agrega la carpeta al PATH del usuario, acceso directo «Facturitas – Configurar», casillas finales (conectar con Claude Desktop / abrir el asistente) y la desinstalación NO borra datos ni certificados. Sin firma de código: SmartScreen avisa (documentado en el README).
+- Ojo en desarrollo: si Claude Desktop tiene el MCP andando desde el repo (`uv run --directory ... factumono mcp`), `factumono.exe` del `.venv` queda bloqueado y `uv sync`/`uv run` fallan al reconstruirlo («os error 32»). Solución: otro entorno (`UV_PROJECT_ENVIRONMENT=.venv-build`) o cerrar Claude Desktop. El instalado usa su propio `.exe`, así que no tiene este problema.
+- `mcp instalar` detecta si corre empaquetado (`sys.frozen`) y escribe `<carpeta de instalación>\factumono.exe mcp`; desde el repo escribe `uv run --directory <repo> factumono mcp`.
+- El instalador (Inno Setup): por usuario (sin admin), agrega la carpeta al PATH del usuario, acceso directo «Factumono – Configurar», casillas finales (conectar con Claude Desktop / abrir el asistente) y la desinstalación NO borra datos ni certificados. Sin firma de código: SmartScreen avisa (documentado en el README).
 
 ## 8. Estructura del repo sugerida
 
 ```
-facturitas/
-  src/facturitas/
+factumono/
+  src/factumono/
     arca/        # wsaa.py, wsfe.py, wsdl/ (embebidos), errors.py, qr.py
     core/        # models.py, service.py (preparar/emitir/idempotencia), money.py, cuit.py
     storage/     # sqlite, migraciones, secretos
@@ -164,12 +164,12 @@ Orden vigente: M3.5 → spike de empaquetado → M4 → M5 → M6 completo → M
   *Acepta:* el prompt de ejemplo de Acciona funciona de punta a punta desde Claude Desktop en homologación.
 - **M3.5 · Historial multi-PC** (antes de M4). *Hecho:* paso 1 (detección de brecha por número, `recuperar` automático, tool MCP `recuperar_comprobantes`), `backup` y `restaurar` (export/import). *Pendiente:* carpeta sincronizada con bloqueo (paso 2), a decidir si hace falta.
   *Problema:* el historial, los clientes y los PDF viven en cada PC. La numeración no se pisa (siempre se consulta `FECompUltimoAutorizado`), pero el historial local puede quedar incompleto si se emite desde otra PC u otro sistema con el mismo punto de venta.
-  *Paso 1 (local):* al iniciar y antes de cada emisión, comparar el último número de ARCA con el último del historial local. Si ARCA tiene más, avisar («hay N comprobantes emitidos fuera de esta PC») y ofrecer `facturitas recuperar` automático para completar el historial con lo que guarda ARCA (ARCA solo guarda totales: ítems y datos del receptor no se recuperan).
+  *Paso 1 (local):* al iniciar y antes de cada emisión, comparar el último número de ARCA con el último del historial local. Si ARCA tiene más, avisar («hay N comprobantes emitidos fuera de esta PC») y ofrecer `factumono recuperar` automático para completar el historial con lo que guarda ARCA (ARCA solo guarda totales: ítems y datos del receptor no se recuperan).
   *Paso 2 (sync):* opción de guardar la base y los clientes en una carpeta sincronizada (OneDrive/Drive/Dropbox) con bloqueo para que dos PCs no escriban a la vez, o export/import. **Nunca sincronizar la clave privada.**
-  *Backup:* `facturitas backup [destino]` genera un zip con fecha en el nombre con las bases (homo y prod), la config y los clientes, **sin** la clave privada ni el `.crt`; `facturitas restaurar <zip>` lo restaura (sirve también como export/import entre PCs).
-  *Documentación:* README con cómo usar Facturitas en una segunda PC (certificado propio por PC con otro alias, asociado a la misma relación `wsfe`).
+  *Backup:* `factumono backup [destino]` genera un zip con fecha en el nombre con las bases (homo y prod), la config y los clientes, **sin** la clave privada ni el `.crt`; `factumono restaurar <zip>` lo restaura (sirve también como export/import entre PCs).
+  *Documentación:* README con cómo usar Factumono en una segunda PC (certificado propio por PC con otro alias, asociado a la misma relación `wsfe`).
   *Acepta:* emitir desde dos PCs con el mismo punto de venta y que ambas terminen con el historial completo, sin duplicados ni pisarse la base.
-- **v0.2 · GUI (M4 replanteado)** — *hecha*: web local (FastAPI + Jinja2 + htmx, sin Node) en ventana nativa (pywebview/WebView2; cae al navegador si falla), `facturitas app [--navegador]`, asistente de primera vez, Nueva factura (preview + confirmación, «la de siempre»), Mis facturas (PDF, nota de crédito), Clientes, Ajustes, Mi IA, barra de tope de monotributo (`data/topes_monotributo.json`, con vigencia y fuente; el del usuario gana), ícono propio (una medialuna con las puntas dobladas, `tools/generar_icono.py`), lema en README/bienvenida/Acerca de. *Pendiente:* capturas reales de los pasos de ARCA (se pone la imagen en `app/static/pasos/<ambiente>/`) e ícono en la bandeja.
+- **v0.2 · GUI (M4 replanteado)** — *hecha*: web local (FastAPI + Jinja2 + htmx, sin Node) en ventana nativa (pywebview/WebView2; cae al navegador si falla), `factumono app [--navegador]`, asistente de primera vez, Nueva factura (preview + confirmación, «la de siempre»), Mis facturas (PDF, nota de crédito), Clientes, Ajustes, Mi IA, barra de tope de monotributo (`data/topes_monotributo.json`, con vigencia y fuente; el del usuario gana), ícono propio (un monito original y simple, `tools/generar_icono.py`), lema en README/bienvenida/Acerca de. *Pendiente:* capturas reales de los pasos de ARCA (se pone la imagen en `app/static/pasos/<ambiente>/`) e ícono en la bandeja.
 - **Instalador v0.1 (Windows)** — *hecho el spike y el instalador; falta probarlo en una PC sin Python*. Ver «Empaquetado: lo aprendido» abajo. Después, v0.2: GUI (M4 replanteado).
 - **Spike de empaquetado** (M6 adelantado, mínimo; antes de M4): PyInstaller `--onedir` de la CLI + MCP actual en Windows, sin instalador.
   *Acepta:* el `.exe` corre `--version`, `estado` y emite una Factura C en homologación desde una carpeta sin Python. Los problemas con reportlab, mcp o cryptography se documentan acá. Se agrega al CI de Windows un job que solo construye y hace el smoke test.

@@ -1,6 +1,6 @@
 """Integración contra HOMOLOGACIÓN de ARCA (solo lectura). Correr con `pytest -m homo`.
 
-Usa tu configuración real (la de `facturitas init`), así que ignora el aislamiento de los
+Usa tu configuración real (la de `factumono init`), así que ignora el aislamiento de los
 otros tests. Nunca emite comprobantes.
 """
 
@@ -8,22 +8,22 @@ import os
 
 import pytest
 
-from facturitas import config
-from facturitas.arca import ambientes
-from facturitas.arca.wsaa import Wsaa
-from facturitas.arca.wsfe import Wsfe
+from factumono import config
+from factumono.arca import ambientes
+from factumono.arca.wsaa import Wsaa
+from factumono.arca.wsfe import Wsfe
 
 pytestmark = pytest.mark.homo
 
 
 @pytest.fixture
 def wsfe(monkeypatch: pytest.MonkeyPatch) -> Wsfe:
-    monkeypatch.delenv("FACTURITAS_HOME", raising=False)
-    if os.environ.get("FACTURITAS_TEST_HOME"):
-        monkeypatch.setenv("FACTURITAS_HOME", os.environ["FACTURITAS_TEST_HOME"])
+    monkeypatch.delenv("FACTUMONO_HOME", raising=False)
+    if os.environ.get("FACTUMONO_TEST_HOME"):
+        monkeypatch.setenv("FACTUMONO_HOME", os.environ["FACTUMONO_TEST_HOME"])
     cfg = config.cargar()
     if not cfg.perfiles:
-        pytest.skip("No hay perfil configurado (`facturitas init`).")
+        pytest.skip("No hay perfil configurado (`factumono init`).")
     perfil = cfg.perfil()
     cred = cfg.credencial_de(perfil)
     amb = ambientes.obtener(cred.ambiente)

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block titulo %}Factumono · Conectar con mi IA{% endblock %}
+{% block contenido %}
+<h1>Conectar con mi IA</h1>
+<p>Si usás <strong>Claude Desktop</strong>, podés facturar charlando: «Facturale a Acciona 1.500.000 por septiembre». Siempre te muestra la factura antes y espera tu «sí»: nunca emite sola.</p>
+<section class="tarjeta">
+  <button class="grande" hx-post="/ia/conectar" hx-target="#ia-res" hx-indicator="#ia-res">Conectar con Claude Desktop</button>
+  <div id="ia-res"></div>
+  <small>Hago una copia del archivo de configuración de Claude Desktop antes de tocarlo.</small>
+</section>
+<section class="tarjeta">
+  <h2 style="margin-top:0">Otros programas (Claude Code, Gemini CLI, Cursor…)</h2>
+  <pre>{{ snippets }}</pre>
+</section>
+{% endblock %}

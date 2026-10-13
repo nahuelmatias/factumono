@@ -1,6 +1,6 @@
-"""Smoke test del ejecutable empaquetado: levanta `facturitas mcp` por stdio y lista las tools.
+"""Smoke test del ejecutable empaquetado: levanta `factumono mcp` por stdio y lista las tools.
 
-python packaging/smoke_mcp.py build/dist/facturitas/facturitas.exe
+python packaging/smoke_mcp.py build/dist/factumono/factumono.exe
 """
 
 import asyncio
@@ -16,7 +16,7 @@ ESPERADAS = {"estado_arca", "preparar_comprobante", "emitir_comprobante", "nota_
 
 async def main(exe: str) -> None:
     with tempfile.TemporaryDirectory() as home:
-        env = {"FACTURITAS_HOME": home, "SYSTEMROOT": os.environ.get("SYSTEMROOT", "")}
+        env = {"FACTUMONO_HOME": home, "SYSTEMROOT": os.environ.get("SYSTEMROOT", "")}
         params = StdioServerParameters(command=exe, args=["mcp"], env=env)
         async with stdio_client(params) as (leer, escribir), ClientSession(leer, escribir) as s:
             await s.initialize()

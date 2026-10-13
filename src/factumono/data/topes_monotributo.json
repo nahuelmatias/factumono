@@ -1,0 +1,19 @@
+{
+  "vigencia_desde": "2026-08-01",
+  "verificado": "2026-10-12",
+  "fuente": "https://www.afip.gob.ar/monotributo/categorias.asp",
+  "nota": "Ingresos brutos anuales por categoría. ARCA los actualiza dos veces por año (febrero y agosto). Para actualizarlos sin esperar una versión nueva, copiá este archivo a la carpeta de datos de Factumono como topes_monotributo.json y cambiá los valores y la vigencia.",
+  "categorias": {
+    "A": "12009410.45",
+    "B": "17595182.74",
+    "C": "24670494.31",
+    "D": "30628651.43",
+    "E": "36028231.33",
+    "F": "45151659.41",
+    "G": "53995798.87",
+    "H": "81924660.37",
+    "I": "91699761.90",
+    "J": "105012519.20",
+    "K": "126610838.75"
+  }
+}

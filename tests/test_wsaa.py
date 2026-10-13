@@ -5,10 +5,10 @@ import httpx
 import pytest
 import respx
 
-from facturitas.arca.ambientes import HOMO
-from facturitas.arca.errors import WsaaError
-from facturitas.arca.wsaa import Wsaa, construir_tra, firmar_tra, parsear_respuesta
-from facturitas.core.models import Credencial
+from factumono.arca.ambientes import HOMO
+from factumono.arca.errors import WsaaError
+from factumono.arca.wsaa import Wsaa, construir_tra, firmar_tra, parsear_respuesta
+from factumono.core.models import Credencial
 from tests.conftest import fixture
 
 AHORA = datetime(2026, 10, 10, 15, 0, tzinfo=UTC)  # 12:00 en Argentina

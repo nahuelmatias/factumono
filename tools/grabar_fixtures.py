@@ -21,12 +21,12 @@ from pathlib import Path
 
 import httpx
 
-from facturitas import config
-from facturitas.arca import ambientes
-from facturitas.arca.errors import ArcaError
-from facturitas.arca.wsaa import Wsaa
-from facturitas.arca.wsfe import Wsfe
-from facturitas.core.models import (
+from factumono import config
+from factumono.arca import ambientes
+from factumono.arca.errors import ArcaError
+from factumono.arca.wsaa import Wsaa
+from factumono.arca.wsfe import Wsfe
+from factumono.core.models import (
     CbteAsociado,
     Comprobante,
     Concepto,

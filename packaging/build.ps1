@@ -13,18 +13,18 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 if (-not $Version) {
-    $Version = (uv run python -c "import facturitas; print(facturitas.__version__)").Trim()
+    $Version = (uv run python -c "import factumono; print(factumono.__version__)").Trim()
 }
-Write-Host "== Facturitas $Version =="
+Write-Host "== Factumono $Version =="
 
 Remove-Item -Recurse -Force build/dist, build/work -ErrorAction SilentlyContinue
-uv run pyinstaller packaging/facturitas.spec --noconfirm --distpath build/dist --workpath build/work
+uv run pyinstaller packaging/factumono.spec --noconfirm --distpath build/dist --workpath build/work
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller falló" }
 
-$exe = (Resolve-Path "build/dist/facturitas/facturitas.exe").Path
+$exe = (Resolve-Path "build/dist/factumono/factumono.exe").Path
 
 # --- smoke test (con un directorio de datos vacío y sin tocar la red) ---
-$env:FACTURITAS_HOME = Join-Path $env:TEMP "facturitas-smoke-$([guid]::NewGuid())"
+$env:FACTUMONO_HOME = Join-Path $env:TEMP "factumono-smoke-$([guid]::NewGuid())"
 $salida = & $exe --version
 if ($LASTEXITCODE -ne 0 -or $salida -notmatch [regex]::Escape($Version)) {
     throw "--version devolvió '$salida' (se esperaba $Version)"
@@ -32,8 +32,8 @@ if ($LASTEXITCODE -ne 0 -or $salida -notmatch [regex]::Escape($Version)) {
 Write-Host "OK: $salida"
 
 $salida = & $exe estado --offline 2>&1 | Out-String
-if ($LASTEXITCODE -ne 1 -or $salida -notmatch "facturitas init") {
-    throw "estado --offline sin configurar debería pedir `facturitas init`; devolvió ($LASTEXITCODE): $salida"
+if ($LASTEXITCODE -ne 1 -or $salida -notmatch "factumono init") {
+    throw "estado --offline sin configurar debería pedir `factumono init`; devolvió ($LASTEXITCODE): $salida"
 }
 Write-Host "OK: estado --offline (sin configurar) explica cómo empezar"
 
@@ -50,17 +50,17 @@ if ($LASTEXITCODE -ne 0 -or $salida -notmatch "OK: la interfaz") {
 Write-Host "OK: la interfaz gráfica empaquetada responde (plantillas, estáticos, seguridad)"
 
 # La ventana propia (sin consola) tiene que abrir y quedarse viva unos segundos.
-$gui = (Resolve-Path "build/dist/facturitas/facturitas-gui.exe").Path
+$gui = (Resolve-Path "build/dist/factumono/factumono-gui.exe").Path
 $proc = Start-Process -FilePath $gui -PassThru
 Start-Sleep -Seconds 10
 $vivo = -not $proc.HasExited
 if ($vivo) { Stop-Process -Id $proc.Id -Force }
-if (-not $vivo) { throw "facturitas-gui.exe se cerró solo (código $($proc.ExitCode))" }
-Write-Host "OK: facturitas-gui.exe abre y se mantiene"
+if (-not $vivo) { throw "factumono-gui.exe se cerró solo (código $($proc.ExitCode))" }
+Write-Host "OK: factumono-gui.exe abre y se mantiene"
 
 uv run python packaging/smoke_mcp.py $exe
 if ($LASTEXITCODE -ne 0) { throw "El MCP empaquetado no responde" }
-Remove-Item Env:FACTURITAS_HOME
+Remove-Item Env:FACTUMONO_HOME
 
 if ($SinInstalador) { return }
 
@@ -71,11 +71,11 @@ if (-not $iscc) {
     }
 }
 if (-not $iscc) { throw "No encuentro Inno Setup (iscc). Instalalo: choco install innosetup" }
-& $iscc "/DAppVersion=$Version" packaging/facturitas.iss
+& $iscc "/DAppVersion=$Version" packaging/factumono.iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup falló" }
 
-$setup = "build/installer/Facturitas-Setup-$Version.exe"
+$setup = "build/installer/Factumono-Setup-$Version.exe"
 $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
-"$hash  Facturitas-Setup-$Version.exe" | Set-Content -Encoding ascii "$setup.sha256"
+"$hash  Factumono-Setup-$Version.exe" | Set-Content -Encoding ascii "$setup.sha256"
 Write-Host "OK: $setup"
 Write-Host "SHA256: $hash"

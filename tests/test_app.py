@@ -13,14 +13,14 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from fastapi.testclient import TestClient
 
-from facturitas import config
-from facturitas.app.server import COOKIE, crear_app
-from facturitas.app.servicios import CONSUMIDOR_FINAL, Servicios
-from facturitas.cli import asistente as asis
-from facturitas.contexto import Contexto
-from facturitas.core import topes
-from facturitas.core.models import Cliente, Credencial, Perfil
-from facturitas.storage.historial import Historial
+from factumono import config
+from factumono.app.server import COOKIE, crear_app
+from factumono.app.servicios import CONSUMIDOR_FINAL, Servicios
+from factumono.cli import asistente as asis
+from factumono.contexto import Contexto
+from factumono.core import topes
+from factumono.core.models import Cliente, Credencial, Perfil
+from factumono.storage.historial import Historial
 from tests.test_cli import WsaaFalso, WsfeFalso
 
 TOKEN = "token-de-prueba"
@@ -117,7 +117,7 @@ def test_no_hay_documentacion_automatica_expuesta(mundo: Mundo) -> None:
 
 
 def test_el_servidor_real_escucha_solo_en_localhost() -> None:
-    from facturitas.app.ventana import ServidorLocal
+    from factumono.app.ventana import ServidorLocal
 
     srv = ServidorLocal()
     assert srv.servidor.config.host == "127.0.0.1"
@@ -259,7 +259,7 @@ def test_no_se_emite_sin_borrador_ni_vencido(mundo: Mundo) -> None:
 def test_la_unica_forma_de_emitir_es_el_borrador() -> None:
     import inspect
 
-    from facturitas.app import server, servicios
+    from factumono.app import server, servicios
 
     assert inspect.getsource(servicios.Servicios).count("service.emitir(") == 1
     assert "service.emitir" not in inspect.getsource(server)
@@ -445,12 +445,12 @@ def test_conectar_claude_desktop_escribe_la_entrada_con_backup(
     destino = tmp_path / "Claude" / "claude_desktop_config.json"
     destino.parent.mkdir()
     destino.write_text('{"otro": 1}', encoding="utf-8")
-    from facturitas.mcp import instalar
+    from factumono.mcp import instalar
 
     monkeypatch.setattr(instalar, "rutas_claude_desktop", lambda: [destino])
     r = mundo.c.post("/ia/conectar")
     assert "Conecté Claude Desktop" in r.text and "copia del archivo anterior" in r.text
-    assert '"facturitas"' in destino.read_text(
+    assert '"factumono"' in destino.read_text(
         encoding="utf-8"
     ) and '"otro": 1' in destino.read_text(encoding="utf-8")
     assert "claude mcp add" in mundo.c.get("/ia").text
@@ -481,7 +481,7 @@ def test_asistente_web_de_punta_a_punta(
     perfil: Perfil, credencial: Credencial, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(asis, "carpeta_certificados", lambda a: tmp_path / "certs" / a)
-    from facturitas.app import servicios as srv_mod
+    from factumono.app import servicios as srv_mod
 
     monkeypatch.setattr(srv_mod, "carpeta_certificados", lambda a: tmp_path / "certs" / a)
     arca = WsfeFalso()
@@ -513,7 +513,7 @@ def test_asistente_web_de_punta_a_punta(
     assert r.status_code == 303
     paso3 = c.get("/asistente?ambiente=homo").text
     assert "Paso 3: los trámites en ARCA" in paso3 and "BEGIN CERTIFICATE REQUEST" in paso3
-    assert "WSASS" in paso3 and "facturitas-homo" in paso3
+    assert "WSASS" in paso3 and "factumono-homo" in paso3
     assert c.get("/asistente/csr?ambiente=homo").text.startswith("-----BEGIN CERTIFICATE REQUEST")
 
     c.post("/asistente/tramites", data={"ambiente": "homo"})
@@ -523,7 +523,7 @@ def test_asistente_web_de_punta_a_punta(
     # un certificado de otra clave se rechaza
     otra = tmp_path / "otra"
     otra.mkdir()
-    from facturitas.arca.csr import generar_clave_y_csr
+    from factumono.arca.csr import generar_clave_y_csr
 
     k2, _, _ = generar_clave_y_csr(otra, "x", CUIT, "X")
     malo = c.post(
@@ -551,7 +551,7 @@ def test_asistente_web_de_punta_a_punta(
 def test_el_asistente_web_pega_el_certificado_como_texto(
     perfil: Perfil, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from facturitas.app import servicios as srv_mod
+    from factumono.app import servicios as srv_mod
 
     monkeypatch.setattr(srv_mod, "carpeta_certificados", lambda a: tmp_path / "certs" / a)
     svc = Servicios(lambda n, a: (_ for _ in ()).throw(config.ConfigError("x")), lambda: AHORA)
@@ -581,5 +581,5 @@ def test_el_icono_y_los_archivos_estaticos_se_sirven(mundo: Mundo) -> None:
     assert b"htmx" in mundo.c.get("/static/htmx.min.js").content[:200]
     assert (
         "Si sos monotributista" in mundo.c.get("/acerca").text
-        and "medialuna" in mundo.c.get("/acerca").text
+        and "mono" in mundo.c.get("/acerca").text
     )
